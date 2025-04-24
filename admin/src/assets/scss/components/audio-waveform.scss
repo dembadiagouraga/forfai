@@ -1,0 +1,17 @@
+.audio-waveform {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  width: 100%;
+  
+  &__bar {
+    width: 2px;
+    margin: 0 1px;
+    border-radius: 1px;
+    transition: height 0.2s ease, background-color 0.2s ease;
+    
+    &--highlighted {
+      transition: height 0.2s ease, background-color 0.2s ease;
+    }
+  }
+}

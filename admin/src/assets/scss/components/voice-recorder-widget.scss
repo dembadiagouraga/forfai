@@ -1,0 +1,132 @@
+.voice-recorder {
+  width: 100%;
+
+  &__mic-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #4a76a8;
+    border: none;
+    cursor: pointer;
+    color: #fff;
+
+    &:hover {
+      background-color: darken(#4a76a8, 10%);
+    }
+
+    &:focus {
+      outline: none;
+    }
+  }
+
+  &__recording {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 16px;
+    border-radius: 8px;
+    background-color: #f5f5f5;
+  }
+
+  &__timer {
+    font-size: 24px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    text-align: center;
+    font-family: monospace; /* Use monospace font for consistent digit width */
+    min-width: 60px; /* Ensure enough space for the timer */
+    display: inline-block;
+  }
+
+  &__waveform {
+    width: 100%;
+    margin-bottom: 16px;
+  }
+
+  &__controls {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+  }
+
+  &__control-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+
+    &:focus {
+      outline: none;
+    }
+
+    &--cancel {
+      background-color: #f44336;
+      color: #fff;
+
+      &:hover {
+        background-color: darken(#f44336, 10%);
+      }
+    }
+
+    &--pause, &--resume {
+      background-color: #4a76a8;
+      color: #fff;
+
+      &:hover {
+        background-color: darken(#4a76a8, 10%);
+      }
+    }
+
+    &--send {
+      background-color: #4caf50;
+      color: #fff;
+
+      &:hover {
+        background-color: darken(#4caf50, 10%);
+      }
+    }
+  }
+
+  &--whatsapp {
+    .voice-recorder__recording {
+      flex-direction: row;
+      align-items: center;
+      padding: 8px 16px;
+      background-color: #fff;
+      border: 1px solid #e0e0e0;
+    }
+
+    .voice-recorder__timer {
+      font-size: 16px;
+      margin-bottom: 0;
+      margin-right: 16px;
+      min-width: 48px;
+      font-family: monospace; /* Use monospace font for consistent digit width */
+      display: inline-block;
+      text-align: center;
+    }
+
+    .voice-recorder__waveform {
+      flex: 1;
+      margin-bottom: 0;
+      margin-right: 16px;
+    }
+
+    .voice-recorder__controls {
+      justify-content: flex-end;
+    }
+
+    .voice-recorder__control-button {
+      width: 36px;
+      height: 36px;
+      margin-left: 8px;
+    }
+  }
+}

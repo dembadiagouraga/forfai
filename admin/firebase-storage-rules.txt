@@ -1,0 +1,21 @@
+// Firebase Storage Rules for Voice Messages
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow read access to all files
+    match /{allPaths=**} {
+      allow read;
+    }
+    
+    // Allow write access to authenticated users for voice messages
+    match /voice_messages/{chatId}/{messageId} {
+      allow write: if request.auth != null;
+    }
+    
+    // Allow write access to authenticated users for images
+    match /images/{chatId}/{messageId} {
+      allow write: if request.auth != null;
+    }
+  }
+}

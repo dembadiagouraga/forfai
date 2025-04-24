@@ -1,0 +1,24 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Http\Requests\Auth;
+
+use App\Http\Requests\BaseRequest;
+
+class ProvideLoginRequest extends BaseRequest
+{
+    /**
+     * Get the validation rules that apply to the request.
+     * @return array
+     */
+    public function rules(): array
+	{
+		return [
+            'email'     => 'required|email',
+            'id'        => 'required|string',
+            'name'      => 'nullable|string',
+            'img'       => 'nullable|string',
+            'referral'  => 'nullable|string|exists:users,my_referral|max:255',
+		];
+	}
+}

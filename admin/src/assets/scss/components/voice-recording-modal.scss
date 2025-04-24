@@ -1,0 +1,38 @@
+.voice-recording-modal {
+  .ant-modal-body {
+    padding: 16px;
+  }
+
+  .ant-modal-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--primary);
+
+    svg {
+      font-size: 18px;
+    }
+  }
+
+  &__content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 150px;
+    padding: 8px 0;
+  }
+
+  [data-theme='dark'] & {
+    .ant-modal-header {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    &__title {
+      color: var(--light-text);
+    }
+  }
+}
