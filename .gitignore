@@ -94,3 +94,9 @@ yarn-error.log
 # Firebase credentials
 *firebase-service-account.json
 *firebase-adminsdk*.json
+
+# Environment files
+customer/.env/
+*.env
+*.env.*
+.qodo
