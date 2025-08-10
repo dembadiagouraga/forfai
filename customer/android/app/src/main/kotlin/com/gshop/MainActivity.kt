@@ -1,4 +1,4 @@
-package org.quick
+package forfai.customer
 
 import io.flutter.embedding.android.FlutterActivity
 

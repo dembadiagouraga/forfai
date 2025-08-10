@@ -26,15 +26,10 @@ class CustomNetworkImage extends StatelessWidget {
   // Helper method to format URLs
   String _getFormattedUrl(String? inputUrl) {
     if (inputUrl == null || inputUrl.isEmpty) {
-      return "";
+      return '';
     }
 
     String fixedUrl = inputUrl;
-
-    // Fix host issues - replace 127.0.0.1 with the correct IP
-    if (fixedUrl.contains('127.0.0.1')) {
-      fixedUrl = fixedUrl.replaceAll('127.0.0.1', '192.168.0.107');
-    }
 
     // Fix double storage path issue
     if (fixedUrl.contains('/storage/storage/')) {
@@ -46,7 +41,34 @@ class CustomNetworkImage extends StatelessWidget {
       fixedUrl = fixedUrl.replaceAll('//storage/', '/storage/');
     }
 
+    // If it's already a full URL (starts with http), fix old IP addresses
     if (fixedUrl.startsWith('http')) {
+      // Normalize host to current baseUrl if old/local IPs are used
+      try {
+        final Uri currentBase = Uri.parse(AppConstants.baseUrl);
+        final Uri incoming = Uri.parse(fixedUrl);
+
+        // Detect hosts that should be rewritten to current base
+        final bool isLocalRange = incoming.host == 'localhost' ||
+            incoming.host == '127.0.0.1' ||
+            incoming.host.startsWith('192.168.');
+
+        if (isLocalRange &&
+            (incoming.host != currentBase.host || incoming.port != currentBase.port)) {
+          final Uri rewritten = Uri(
+            scheme: currentBase.scheme,
+            host: currentBase.host,
+            port: currentBase.hasPort ? currentBase.port : null,
+            path: incoming.path,
+            query: incoming.hasQuery ? incoming.query : null,
+            fragment: incoming.hasFragment ? incoming.fragment : null,
+          );
+          return rewritten.toString();
+        }
+      } catch (_) {
+        // If parsing fails, fall through and return fixedUrl as-is
+      }
+
       return fixedUrl;
     }
 

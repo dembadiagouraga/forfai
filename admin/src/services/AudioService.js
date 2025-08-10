@@ -2,6 +2,7 @@
 
 import WaveSurfer from 'wavesurfer.js';
 import { ReactMic } from 'react-mic';
+import { toast } from 'react-toastify';
 
 /**
  * Service for handling audio recording and playback
@@ -27,6 +28,7 @@ class AudioService {
     this.waveSurfer = null;
     this.audioElement = null; // HTML5 Audio element for fallback
     this.lastSource = null; // Last audio source used
+    this.maxRecordingDuration = 120; // Maximum recording duration in seconds (2 minutes)
 
     // Event listeners
     this.onRecordingStart = null;
@@ -35,6 +37,7 @@ class AudioService {
     this.onPlaybackStart = null;
     this.onPlaybackStop = null;
     this.onPlaybackProgress = null;
+    this.onMaxDurationReached = null;
   }
 
   /**
@@ -90,6 +93,16 @@ class AudioService {
       if (elapsedSeconds !== this.recordingDuration) {
         this.recordingDuration = elapsedSeconds;
         console.log('Recording duration updated:', this.recordingDuration, 'seconds');
+
+        // Check if max duration reached
+        if (this.recordingDuration >= this.maxRecordingDuration) {
+          console.log('AudioService: Maximum recording duration reached');
+          if (this.onMaxDurationReached) {
+            this.onMaxDurationReached();
+          }
+          this.stopRecording();
+          return;
+        }
 
         if (this.onDurationChange) {
           this.onDurationChange(this.recordingDuration);
@@ -157,6 +170,16 @@ class AudioService {
         this.recordingDuration = elapsedSeconds;
         console.log('Recording duration updated (resumed):', this.recordingDuration, 'seconds');
 
+        // Check if max duration reached
+        if (this.recordingDuration >= this.maxRecordingDuration) {
+          console.log('AudioService: Maximum recording duration reached');
+          if (this.onMaxDurationReached) {
+            this.onMaxDurationReached();
+          }
+          this.stopRecording();
+          return;
+        }
+
         if (this.onDurationChange) {
           this.onDurationChange(this.recordingDuration);
         }
@@ -205,66 +228,123 @@ class AudioService {
 
     // Handle different types of sources
     let audioUrl = source;
+    let originalBlob = null;
 
-    // If source is a local file path from Flutter (starts with /data/user/...)
-    if (typeof source === 'string' && source.startsWith('/data/user/')) {
-      console.log('AudioService: Source is a local file path from Flutter, cannot play directly');
-      // Use a sample audio file as fallback for local file paths
-      audioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3';
+    // If source is a Blob, create an object URL
+    if (source instanceof Blob) {
+      originalBlob = source;
+
+      // Check if we need to convert the blob format
+      if (source.type !== 'audio/mpeg' && source.type !== 'audio/mp3') {
+        console.log('AudioService: Converting blob to MP3 format');
+        // Create a new blob with MP3 MIME type
+        const mp3Blob = new Blob([source], { type: 'audio/mpeg' });
+        audioUrl = URL.createObjectURL(mp3Blob);
+        console.log('AudioService: Created MP3 blob URL:', audioUrl);
+      } else {
+        audioUrl = URL.createObjectURL(source);
+        console.log('AudioService: Created object URL for blob:', audioUrl);
+      }
     }
 
-    // If source is a dummy URL from development mode
-    else if (typeof source === 'string' && (source.includes('example.com') || source.includes('dummy'))) {
-      console.log('AudioService: Source is a dummy URL, using sample audio');
-      audioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-    }
-
-    // Always use HTML5 Audio element for better compatibility
-    console.log('AudioService: Using HTML5 Audio for playback with URL:', audioUrl);
-
-    // Create an audio element for playback if it doesn't exist
+    // Create or reuse audio element
     if (!this.audioElement) {
+      console.log('AudioService: Creating new HTML5 Audio element');
       this.audioElement = new Audio();
 
       // Set up event listeners
       this.audioElement.onplay = () => {
-        console.log('AudioService: HTML5 Audio started playing');
-        if (this.onPlaybackStart) {
-          this.onPlaybackStart();
-        }
+        console.log('AudioService: Playback started');
+        if (this.onPlaybackStart) this.onPlaybackStart();
       };
 
       this.audioElement.onpause = () => {
-        console.log('AudioService: HTML5 Audio paused');
+        console.log('AudioService: Playback paused');
+        if (this.onPlaybackStop) this.onPlaybackStop();
       };
 
       this.audioElement.onended = () => {
-        console.log('AudioService: HTML5 Audio ended');
-        if (this.onPlaybackStop) {
-          this.onPlaybackStop();
-        }
+        console.log('AudioService: Playback ended');
+        if (this.onPlaybackStop) this.onPlaybackStop();
       };
 
       this.audioElement.ontimeupdate = () => {
         const progress = this.audioElement.currentTime;
-        if (this.onPlaybackProgress) {
-          this.onPlaybackProgress(progress);
-        }
+        if (this.onPlaybackProgress) this.onPlaybackProgress(progress);
       };
 
       this.audioElement.onerror = (e) => {
         console.error('AudioService: HTML5 Audio error:', e);
         console.log('AudioService: Error details:', e.target.error);
 
-        // If there's an error with the audio URL, try a fallback
-        console.log('AudioService: Using fallback audio due to error');
-        this.audioElement.src = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-        this.audioElement.play();
+        // If there's an error with the audio URL, try different formats
+        if (typeof audioUrl === 'string') {
+          // First try: If it's a blob URL and we have the original blob, try with the original format
+          if (audioUrl.startsWith('blob:') && originalBlob) {
+            console.log('AudioService: Trying with original blob format');
+            const originalUrl = URL.createObjectURL(originalBlob);
+            this.audioElement.src = originalUrl;
+            this.audioElement.type = originalBlob.type;
+            this.audioElement.play().catch(error => {
+              console.error('AudioService: Original blob format error:', error);
+
+              // Second try: Try with WebM format
+              if (originalBlob.type !== 'audio/webm') {
+                const webmBlob = new Blob([originalBlob], { type: 'audio/webm' });
+                const webmUrl = URL.createObjectURL(webmBlob);
+                console.log('AudioService: Trying WebM format');
+                this.audioElement.src = webmUrl;
+                this.audioElement.type = 'audio/webm';
+                this.audioElement.play().catch(err => {
+                  console.error('AudioService: WebM fallback error:', err);
+                  this.tryProxyFallback(audioUrl);
+                });
+              } else {
+                this.tryProxyFallback(audioUrl);
+              }
+            });
+            return;
+          }
+
+          // Check if the URL is an AAC file and try to convert it to MP3
+          if (audioUrl.endsWith('.aac')) {
+            const mp3Url = audioUrl.replace('.aac', '.mp3');
+            console.log('AudioService: Trying MP3 URL instead:', mp3Url);
+            this.audioElement.src = mp3Url;
+            this.audioElement.type = "audio/mpeg";
+            this.audioElement.play().catch(error => {
+              console.error('AudioService: MP3 fallback error:', error);
+              this.tryProxyFallback(audioUrl);
+            });
+            return;
+          }
+
+          // If it's already MP3 but still failing, try proxy
+          if (audioUrl.endsWith('.mp3')) {
+            this.tryProxyFallback(audioUrl);
+            return;
+          }
+        }
+
+        // If all else fails, show error
+        toast.error('Error playing audio file');
       };
     }
 
     // Set the source and play
-    this.audioElement.src = audioUrl;
+    // Add a cache-busting parameter to avoid browser caching issues
+    const cacheBuster = `?cb=${Date.now()}`;
+    const finalUrl = typeof audioUrl === 'string' ? audioUrl + cacheBuster : audioUrl;
+    this.audioElement.src = finalUrl;
+    this.audioElement.crossOrigin = "anonymous"; // Add CORS support for cross-origin audio
+
+    // Set MIME type explicitly to help browser identify the content
+    // Default to MP3 for URLs, use the blob's type for blobs
+    if (originalBlob) {
+      this.audioElement.type = originalBlob.type;
+    } else {
+      this.audioElement.type = "audio/mpeg";
+    }
 
     // Play with a small delay to ensure the src is set
     setTimeout(() => {
@@ -274,9 +354,41 @@ class AudioService {
       if (playPromise !== undefined) {
         playPromise.catch(error => {
           console.error('AudioService: Play promise error:', error);
-          // Try fallback on error
-          this.audioElement.src = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-          this.audioElement.play();
+
+          // Try different approaches to play the audio
+          if (originalBlob) {
+            // Try with WebM format if we have the original blob
+            const webmBlob = new Blob([originalBlob], { type: 'audio/webm' });
+            const webmUrl = URL.createObjectURL(webmBlob);
+            console.log('AudioService: Trying WebM format');
+            this.audioElement.src = webmUrl;
+            this.audioElement.type = 'audio/webm';
+            this.audioElement.play().catch(err => {
+              console.error('AudioService: WebM fallback error:', err);
+              toast.error('Error playing audio file');
+            });
+          } else if (typeof audioUrl === 'string') {
+            // First approach: Try with MP3 extension if it's AAC
+            if (audioUrl.endsWith('.aac')) {
+              const mp3Url = audioUrl.replace('.aac', '.mp3');
+              console.log('AudioService: Trying MP3 URL instead:', mp3Url);
+              this.audioElement.src = mp3Url + `?cb=${Date.now()}`;
+              this.audioElement.type = "audio/mpeg";
+              this.audioElement.play().catch(err => {
+                console.error('AudioService: MP3 fallback error:', err);
+                this.tryProxyFallback(audioUrl);
+              });
+            }
+            // If it's already MP3 but still failing, try proxy
+            else if (audioUrl.endsWith('.mp3')) {
+              this.tryProxyFallback(audioUrl);
+            }
+            else {
+              toast.error('Error playing audio file');
+            }
+          } else {
+            toast.error('Error playing audio file');
+          }
         });
       }
     }, 100);
@@ -352,7 +464,7 @@ class AudioService {
   }
 
   /**
-   * Format duration in seconds to mm:ss format
+   * Format duration in seconds to m:ss format (without leading zero for minutes)
    * @param {number} seconds - Duration in seconds
    * @returns {string} Formatted duration
    */
@@ -360,7 +472,13 @@ class AudioService {
     // Ensure seconds is a valid number
     if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
       console.warn('Invalid duration value:', seconds);
+      // Default to 0 instead of throwing an error
       seconds = 0;
+    }
+
+    // Convert to number if it's a string
+    if (typeof seconds === 'string') {
+      seconds = parseFloat(seconds);
     }
 
     // Round to nearest integer to avoid floating point issues
@@ -369,8 +487,56 @@ class AudioService {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
 
-    // Format as mm:ss with leading zeros
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    // Format as m:ss without leading zero for minutes
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Try to play audio through a proxy to avoid CORS issues
+   * @param {string} audioUrl - The original audio URL
+   */
+  tryProxyFallback(audioUrl) {
+    console.log('AudioService: Trying proxy fallback for URL:', audioUrl);
+
+    // Create a Blob from the audio URL using fetch
+    fetch(audioUrl, {
+      mode: 'cors',
+      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return response.blob();
+    })
+    .then(blob => {
+      // Create a local URL from the blob
+      const blobUrl = URL.createObjectURL(blob);
+      console.log('AudioService: Created blob URL:', blobUrl);
+
+      // Play the local blob URL
+      this.audioElement.src = blobUrl;
+      this.audioElement.type = "audio/mpeg";
+      return this.audioElement.play();
+    })
+    .catch(error => {
+      console.error('AudioService: Proxy fallback error:', error);
+
+      // Final fallback: Try to use a server-side proxy if available
+      const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(audioUrl)}`;
+      console.log('AudioService: Trying server proxy:', proxyUrl);
+
+      this.audioElement.src = proxyUrl;
+      this.audioElement.play().catch(err => {
+        console.error('AudioService: Server proxy error:', err);
+        toast.error('Error playing audio file');
+      });
+    });
   }
 
   /**

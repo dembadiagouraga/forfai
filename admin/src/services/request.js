@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 
 const service = axios.create({
   baseURL: api_url,
-  timeout: 16000,
+  timeout: 60000, // Increased timeout to 60 seconds
 });
 
 // Config

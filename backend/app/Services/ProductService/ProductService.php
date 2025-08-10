@@ -4,17 +4,18 @@ declare(strict_types=1);
 namespace App\Services\ProductService;
 
 use App\Helpers\ResponseError;
-use App\Models\AttributeValue;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Settings;
-use App\Services\CoreService;
+use App\Traits\AudioConversionTrait;
 use App\Traits\SetTranslations;
+use Illuminate\Support\Facades\Storage;
+use App\Services\CoreService;
 use Throwable;
 
 class ProductService extends CoreService
 {
-    use SetTranslations;
+    use SetTranslations, AudioConversionTrait;
 
     protected function getModelClass(): string
     {
@@ -58,6 +59,102 @@ class ProductService extends CoreService
                 $product->setMetaTags($data);
             }
 
+            // Handle voice note upload
+            if (request()->hasFile('voice_note')) {
+                $voiceNote = request()->file('voice_note');
+
+                // Detect actual file format from MIME type and extension
+                $originalExtension = strtolower($voiceNote->getClientOriginalExtension());
+                $mimeType = $voiceNote->getMimeType();
+                $formatInfo = $this->getAudioFormatInfo($mimeType, $originalExtension);
+
+                $voiceNotePath = 'media/voice-notes/' . uniqid() . '.mp3'; // Always save as MP3
+                $fileContents = file_get_contents($voiceNote->getRealPath());
+                $finalContentType = 'audio/mpeg';
+
+                // Log the file details for debugging
+                \Log::info("Voice note upload: Original extension: {$originalExtension}, MIME type: {$mimeType}, Detected format: {$formatInfo['extension']}");
+
+                // Check if we need to convert to MP3 for web compatibility
+                if ($formatInfo['needs_conversion']) {
+                    \Log::info("Converting {$formatInfo['extension']} voice note to MP3 for web compatibility");
+
+                    try {
+                        $conversionResult = $this->convertAudioToMp3($voiceNote->getRealPath(), $formatInfo['extension']);
+
+                        if ($conversionResult['success']) {
+                            // Update file contents with converted file
+                            $fileContents = file_get_contents($conversionResult['converted_path']);
+                            \Log::info("Successfully converted {$formatInfo['extension']} voice note to MP3. New size: " . strlen($fileContents) . " bytes");
+
+                            // Clean up temporary converted file
+                            if (file_exists($conversionResult['converted_path'])) {
+                                unlink($conversionResult['converted_path']);
+                            }
+                        } else {
+                            \Log::warning("Voice note conversion failed: " . $conversionResult['error'] . ". Uploading original format.");
+                        }
+                    } catch (\Exception $e) {
+                        \Log::warning("Voice note conversion exception: " . $e->getMessage() . ". Uploading original format.");
+                    }
+                }
+
+                // Get voice note duration if provided
+                $voiceNoteDuration = request()->input('voice_note_duration');
+
+                try {
+                    // Try to upload to S3 using AWS SDK directly
+                    $s3Client = new \Aws\S3\S3Client([
+                        'version' => 'latest',
+                        'region' => env('AWS_DEFAULT_REGION'),
+                        'credentials' => [
+                            'key' => env('AWS_ACCESS_KEY_ID'),
+                            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                        ],
+                        'http' => [
+                            'verify' => false // Disable SSL verification for testing
+                        ]
+                    ]);
+
+                    // Upload to S3
+                    $result = $s3Client->putObject([
+                        'Bucket' => env('AWS_BUCKET'),
+                        'Key' => $voiceNotePath,
+                        'Body' => $fileContents,
+                        'ContentType' => $finalContentType,
+                        'Metadata' => [
+                            'original-extension' => $originalExtension,
+                            'detected-format' => $formatInfo['extension'],
+                            'final-format' => 'mp3',
+                            'converted' => $formatInfo['needs_conversion'] ? 'true' : 'false',
+                        ],
+                        // No ACL parameter
+                    ]);
+
+                    // Get the URL
+                    $url = $result['ObjectURL'];
+
+                    // Save voice note URL and duration
+                    $product->update([
+                        'voice_note_url' => $url,
+                        'voice_note_duration' => $voiceNoteDuration,
+                    ]);
+                } catch (\Exception $e) {
+                    // If S3 upload fails, store locally
+                    \Log::warning("S3 upload failed: " . $e->getMessage() . ". Storing voice note locally.");
+
+                    // Store locally
+                    $localPath = 'public/voice-notes/' . uniqid() . '.mp3';
+                    Storage::put($localPath, $fileContents);
+
+                    // Save local URL and duration
+                    $product->update([
+                        'voice_note_url' => rtrim(config('app.img_host'), '/') . '/' . str_replace('public/', 'storage/', $localPath),
+                        'voice_note_duration' => $voiceNoteDuration,
+                    ]);
+                }
+            }
+
             if (data_get($data, 'images.0')) {
                 $product->update(['img' => data_get($data, 'previews.0') ?? data_get($data, 'images.0')]);
                 $product->uploads(data_get($data, 'images'));
@@ -99,11 +196,13 @@ class ProductService extends CoreService
                 ];
             }
 
-            $product = $this->model()
-                ->when(request()->is('api/v1/dashboard/user/*'), function ($q) {
-                    $q->where('user_id', auth('sanctum')->id());
-                })
-                ->firstWhere('slug', $slug);
+            $query = $this->model()->newQuery();
+
+            if (request()->is('api/v1/dashboard/user/*')) {
+                $query->where('user_id', auth('sanctum')->id());
+            }
+
+            $product = $query->where('slug', $slug)->first();
 
             if (empty($product)) {
                 return ['status' => false, 'code' => ResponseError::ERROR_404];
@@ -119,6 +218,93 @@ class ProductService extends CoreService
 
             if (data_get($data, 'meta')) {
                 $product->setMetaTags($data);
+            }
+
+            // Handle voice note upload
+            if (request()->hasFile('voice_note')) {
+                // Delete old voice note if exists
+                if ($product->voice_note_url) {
+                    $oldPath = str_replace(env('AWS_URL') . '/', '', $product->voice_note_url);
+                    Storage::disk('s3')->delete($oldPath);
+                }
+
+                $voiceNote = request()->file('voice_note');
+
+                // Detect actual file format from MIME type and extension
+                $originalExtension = strtolower($voiceNote->getClientOriginalExtension());
+                $mimeType = $voiceNote->getMimeType();
+                $formatInfo = $this->getAudioFormatInfo($mimeType, $originalExtension);
+
+                $voiceNotePath = 'media/voice-notes/' . uniqid() . '.mp3'; // Always save as MP3
+                $fileContents = file_get_contents($voiceNote->getRealPath());
+                $finalContentType = 'audio/mpeg';
+
+                // Log the file details for debugging
+                \Log::info("Voice note update: Original extension: {$originalExtension}, MIME type: {$mimeType}, Detected format: {$formatInfo['extension']}");
+
+                // Check if we need to convert to MP3 for web compatibility
+                if ($formatInfo['needs_conversion']) {
+                    \Log::info("Converting {$formatInfo['extension']} voice note to MP3 for web compatibility");
+
+                    try {
+                        $conversionResult = $this->convertAudioToMp3($voiceNote->getRealPath(), $formatInfo['extension']);
+
+                        if ($conversionResult['success']) {
+                            // Update file contents with converted file
+                            $fileContents = file_get_contents($conversionResult['converted_path']);
+                            \Log::info("Successfully converted {$formatInfo['extension']} voice note to MP3. New size: " . strlen($fileContents) . " bytes");
+
+                            // Clean up temporary converted file
+                            if (file_exists($conversionResult['converted_path'])) {
+                                unlink($conversionResult['converted_path']);
+                            }
+                        } else {
+                            \Log::warning("Voice note conversion failed: " . $conversionResult['error'] . ". Uploading original format.");
+                        }
+                    } catch (\Exception $e) {
+                        \Log::warning("Voice note conversion exception: " . $e->getMessage() . ". Uploading original format.");
+                    }
+                }
+
+                // Get voice note duration if provided
+                $voiceNoteDuration = request()->input('voice_note_duration');
+
+                // Try to upload to S3 using AWS SDK directly
+                $s3Client = new \Aws\S3\S3Client([
+                    'version' => 'latest',
+                    'region' => env('AWS_DEFAULT_REGION'),
+                    'credentials' => [
+                        'key' => env('AWS_ACCESS_KEY_ID'),
+                        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                    ],
+                    'http' => [
+                        'verify' => false // Disable SSL verification for testing
+                    ]
+                ]);
+
+                // Upload to S3
+                $result = $s3Client->putObject([
+                    'Bucket' => env('AWS_BUCKET'),
+                    'Key' => $voiceNotePath,
+                    'Body' => $fileContents,
+                    'ContentType' => $finalContentType,
+                    'Metadata' => [
+                        'original-extension' => $originalExtension,
+                        'detected-format' => $formatInfo['extension'],
+                        'final-format' => 'mp3',
+                        'converted' => $formatInfo['needs_conversion'] ? 'true' : 'false',
+                    ],
+                    // No ACL parameter
+                ]);
+
+                // Get the URL
+                $url = $result['ObjectURL'];
+
+                // Save voice note URL and duration
+                $product->update([
+                    'voice_note_url' => $url,
+                    'voice_note_duration' => $voiceNoteDuration,
+                ]);
             }
 
             if (data_get($data, 'images.0')) {

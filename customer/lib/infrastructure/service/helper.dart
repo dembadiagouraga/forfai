@@ -57,22 +57,54 @@ abstract class AppHelpers {
   }
 
   static String errorHandler(e, {String? statusCode}) {
+    debugPrint('Error handler called with: $e');
+
     if (e.runtimeType == DioException) {
       final dioError = e as DioException;
+      debugPrint('DioException type: ${dioError.type}');
+      debugPrint('DioException message: ${dioError.message}');
+      debugPrint('DioException response: ${dioError.response}');
+
+      // Handle connection timeout errors
+      if (dioError.type == DioExceptionType.connectionTimeout ||
+          dioError.type == DioExceptionType.receiveTimeout ||
+          dioError.type == DioExceptionType.sendTimeout) {
+        return "Connection timeout. Please check your internet connection and try again.";
+      }
+
+      // Handle connection errors
+      if (dioError.type == DioExceptionType.connectionError) {
+        return "Connection error. Please check your internet connection and try again.";
+      }
+
+      // Handle server errors
+      if (dioError.response?.statusCode != null && dioError.response!.statusCode! >= 500) {
+        return "Server error. Please try again later.";
+      }
+
+      // Handle response data errors
       if (dioError.response?.data != null && dioError.response?.data["message"] != null) {
+        debugPrint('Response data message: ${dioError.response?.data["message"]}');
+
         if (dioError.response?.data["message"] == "Bad request.") {
           if (dioError.response?.data["params"] != null) {
-            return (dioError.response?.data["params"] as Map).values.first[0];
+            try {
+              return (dioError.response?.data["params"] as Map).values.first[0];
+            } catch (e) {
+              debugPrint('Error parsing params: $e');
+              return dioError.response?.data["message"] ?? "Invalid request data";
+            }
           } else {
-            return dioError.response?.data["message"] ?? "Unknown error";
+            return dioError.response?.data["message"] ?? "Invalid request data";
           }
         } else {
-          return dioError.response?.data["message"] ?? "Unknown error";
+          return dioError.response?.data["message"] ?? "Request failed";
         }
       } else {
         return dioError.message ?? "Network error";
       }
     } else {
+      debugPrint('Non-DioException: ${e.toString()}');
       return e.toString();
     }
   }
@@ -295,30 +327,68 @@ abstract class AppHelpers {
 
   static errorSnackBar(
       {required BuildContext context, required String message}) {
-    FToast.toast(context,
-        toast: SizedBox(
-          height: MediaQuery.sizeOf(context).height,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              76.verticalSpace,
-              Container(
-                  padding: EdgeInsets.all(16.r),
-                  margin: REdgeInsets.symmetric(horizontal: 32),
-                  decoration: BoxDecoration(
-                      color: CustomStyle.primary,
-                      borderRadius: BorderRadius.circular(8.r)),
-                  child: Text(
-                    message,
+    debugPrint('Showing error snackbar: $message');
+
+    // Make sure we have a valid message
+    final displayMessage = message.isNotEmpty ? message : "An error occurred. Please try again.";
+
+    FToast.toast(
+      context,
+      toast: SizedBox(
+        height: MediaQuery.sizeOf(context).height,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            76.verticalSpace,
+            Container(
+              width: MediaQuery.of(context).size.width * 0.85,
+              padding: EdgeInsets.all(16.r),
+              margin: REdgeInsets.symmetric(horizontal: 32),
+              decoration: BoxDecoration(
+                color: Colors.red.shade700,
+                borderRadius: BorderRadius.circular(12.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.white, size: 24.r),
+                      8.horizontalSpace,
+                      Text(
+                        "Error",
+                        style: CustomStyle.interBold(
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  8.verticalSpace,
+                  Text(
+                    displayMessage,
                     style: CustomStyle.interNormal(
-                        color: CustomStyle.white, size: 14),
-                    maxLines: 24,
-                  ))
-            ],
-          ),
-        ));
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    maxLines: 10,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   static void showCustomModalBottomSheet({

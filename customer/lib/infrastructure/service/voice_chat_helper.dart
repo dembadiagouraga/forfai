@@ -6,6 +6,8 @@ import 'package:quick/domain/di/dependency_manager.dart';
 import 'package:quick/domain/model/model/message_model.dart';
 import 'package:quick/domain/model/model/product_model.dart';
 import 'package:quick/infrastructure/service/audio_service.dart';
+import 'package:quick/infrastructure/service/helper.dart';
+import 'package:quick/infrastructure/service/tr_keys.dart';
 
 /// Helper class for voice chat functionality
 /// This class is used to handle voice message operations without modifying the existing BLoC structure
@@ -100,6 +102,12 @@ class VoiceChatHelper {
     try {
       debugPrint("Playing voice message: $messageId, path: $audioUrl");
 
+      // Check if audio URL is empty
+      if (audioUrl.isEmpty) {
+        debugPrint("Audio URL is empty for message: $messageId");
+        throw Exception(AppHelpers.getTranslation(TrKeys.audioFileNotFound));
+      }
+
       // Check if this is the same message that was paused
       if (_currentlyPlayingMessageId == messageId) {
         // This message was paused (internal ID exists)
@@ -132,42 +140,77 @@ class VoiceChatHelper {
 
       // Update internal state before starting playback
       _currentlyPlayingMessageId = messageId;
+      currentlyPlayingMessageId.value = messageId;
 
-      // Don't update UI state here - let the UI handle that
-      debugPrint("Internal state updated, messageId: $messageId");
+      // If this is a URL (from S3 or Firebase), play it directly
+      if (audioUrl.startsWith('http')) {
+        debugPrint("Playing audio from URL: $audioUrl");
 
-      // Check if the audio file exists locally
-      if (!audioUrl.startsWith('http')) {
-        final file = File(audioUrl);
-        if (await file.exists()) {
-          debugPrint("Playing local audio file");
+        try {
+          // ✅ ENHANCED: S3 URL detection and handling
+          if (audioUrl.contains('amazonaws.com')) {
+            debugPrint("Detected S3 URL, trying direct playback first");
+          }
+
+          // Just use the direct URL - our improved AudioService will handle the download
           await _audioService.playAudio(audioUrl);
 
           // Listen for playback completion
-          _audioService.playbackStateStream.listen((state) {
+          final subscription = _audioService.playbackStateStream.listen((state) {
+            debugPrint("Playback state changed: $state for message: $messageId");
+
             if (state.processingState == ProcessingState.completed) {
+              debugPrint("Playback completed for message: $messageId");
               _currentlyPlayingMessageId = null;
               currentlyPlayingMessageId.value = null;
             }
           });
 
+          // Get the duration after a short delay to allow the player to load metadata
+          Future.delayed(const Duration(seconds: 1), () {
+            try {
+              final duration = _audioService.getDuration();
+              if (duration != null && duration.inSeconds > 0) {
+                debugPrint("Detected audio duration: ${duration.inSeconds}s for message: $messageId");
+              }
+            } catch (e) {
+              debugPrint("Error getting audio duration: $e");
+            }
+          });
+
+          // Cancel subscription after 30 seconds to avoid memory leaks
+          Future.delayed(const Duration(seconds: 30), () {
+            subscription.cancel();
+          });
+
+          // If we get here, playback started successfully
+          debugPrint("Successfully playing URL: $audioUrl");
           return;
-        } else {
-          debugPrint("Local audio file not found: $audioUrl");
-          throw Exception(AppHelpers.getTranslation(TrKeys.audioFileNotFound));
+        } catch (e) {
+          debugPrint("Failed to play URL: $audioUrl, error: $e");
+          rethrow;
         }
       }
 
-      // If it's a URL, play it normally
-      await _audioService.playAudio(audioUrl);
+      // For backward compatibility, check if it's a local file
+      final file = File(audioUrl);
+      if (await file.exists()) {
+        debugPrint("Playing local audio file");
+        await _audioService.playAudio(audioUrl);
 
-      // Listen for playback completion
-      _audioService.playbackStateStream.listen((state) {
-        if (state.processingState == ProcessingState.completed) {
-          _currentlyPlayingMessageId = null;
-          currentlyPlayingMessageId.value = null;
-        }
-      });
+        // Listen for playback completion
+        _audioService.playbackStateStream.listen((state) {
+          if (state.processingState == ProcessingState.completed) {
+            _currentlyPlayingMessageId = null;
+            currentlyPlayingMessageId.value = null;
+          }
+        });
+        return;
+      }
+
+      // If we get here, the file doesn't exist
+      debugPrint("Audio file not found: $audioUrl");
+      throw Exception(AppHelpers.getTranslation(TrKeys.audioFileNotFound));
     } catch (e) {
       debugPrint("Error playing voice message: $e");
       // Reset state on error
@@ -278,7 +321,18 @@ class VoiceChatHelper {
 
   /// Get current player state - public method for UI
   AudioPlayerState getCurrentPlayerState() {
-    return _audioService.getPlayerState();
+    // Check if player is playing
+    try {
+      final player = _audioService as dynamic;
+      if (player._player?.playing == true) {
+        return AudioPlayerState.playing;
+      } else {
+        return AudioPlayerState.paused;
+      }
+    } catch (e) {
+      debugPrint("Error getting player state: $e");
+      return AudioPlayerState.stopped;
+    }
   }
 
   /// Dispose resources

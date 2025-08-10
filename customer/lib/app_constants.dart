@@ -17,17 +17,31 @@ abstract class AppConstants {
 
   static const SignUpType signUpType = SignUpType.email;
   static const bool isPhoneFirebase = false;
-  /// api urls
-  static const String baseUrl = "http://192.168.0.107:8000";
-  static const String webUrl = "http://192.168.0.107:3000";
-  static const String adminPageUrl = "http://192.168.0.107:3001";
+  
+  /// api urls - Use environment variables for flexible deployment
+  static const String baseUrl = String.fromEnvironment('BASE_URL', defaultValue: "http://192.168.0.110:8000");
+  static const String webUrl = String.fromEnvironment('WEB_URL', defaultValue: "http://192.168.0.110:3000");
+  static const String adminPageUrl = String.fromEnvironment('ADMIN_URL', defaultValue: "http://192.168.0.110:3001");
   static const String imageUrl = "$baseUrl/storage/"; // Image base URL - must match backend's IMG_HOST
   static const String googleApiKey = "YOUR_GOOGLE_MAPS_API_KEY";
   static const String firebaseWebKey = "AIzaSyAR2vkM7_yt9MQTEIOM5dOAfXQd03OHfHg";
   static const String geminiKey = "AIzaSyBTt9nXRIkkP093cPSbFMeA-G2Ou5QctVA";
   static const String urlPrefix = "";
-  static const String routingBaseUrl = "http://192.168.0.107:8000";
+  static const String routingBaseUrl = String.fromEnvironment('ROUTING_API', defaultValue: "http://192.168.0.110:8000");
   static const String routingKey = "";
+
+  /// Helper method to fix IP addresses in URLs
+  static String fixLocalIpUrl(String url) {
+    if (url.contains('127.0.0.1')) {
+      // Extract host from baseUrl
+      final Uri baseUri = Uri.parse(baseUrl);
+      final String host = baseUri.host;
+
+      // Replace 127.0.0.1 with the current host
+      return url.replaceAll('127.0.0.1', host);
+    }
+    return url;
+  }
 
   /// auth phone fields
   static const bool isNumberLengthAlwaysSame = true;

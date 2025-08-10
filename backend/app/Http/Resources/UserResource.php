@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Helpers\Utility;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class UserResource extends JsonResource
 {
@@ -40,7 +41,7 @@ class UserResource extends JsonResource
             'birthday'          => $this->when($this->birthday, $this->birthday?->format('Y-m-d H:i:s') . 'Z'),
             'gender'            => $this->when($this->gender, $this->gender),
             'active'            => (boolean)$this->active,
-            'img'               => $this->when($this->img, $this->img),
+            'img'               => $this->when($this->img, $this->img ? (Str::startsWith($this->img, '/') ? $this->img : '/' . $this->img) : null),
             'referral'          => $this->when($this->referral, $this->referral),
             'my_referral'       => $this->when($this->my_referral, $this->my_referral),
             'role'              => $this->when($role, $role),

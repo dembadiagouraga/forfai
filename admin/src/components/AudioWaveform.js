@@ -3,7 +3,7 @@ import '../assets/scss/components/audio-waveform.scss';
 
 /**
  * A component that displays an audio waveform similar to WhatsApp
- * 
+ *
  * @param {Object} props - Component props
  * @param {number} props.durationSeconds - The duration of the audio in seconds
  * @param {string} props.color - The color of the waveform
@@ -11,12 +11,12 @@ import '../assets/scss/components/audio-waveform.scss';
  * @param {boolean} props.isPlaying - Whether the audio is currently playing
  * @param {number} props.currentPosition - The current playback position in seconds
  */
-const AudioWaveform = ({ 
-  durationSeconds, 
-  color = '#4a76a8', 
-  barCount = 30, 
-  isPlaying = false, 
-  currentPosition = 0 
+const AudioWaveform = ({
+  durationSeconds,
+  color = '#2E8B57', // Changed to sea green
+  barCount = 30,
+  isPlaying = false,
+  currentPosition = 0
 }) => {
   /**
    * Get a height value between 0.0 and 1.0 for a given position
@@ -30,23 +30,29 @@ const AudioWaveform = ({
   };
 
   return (
-    <div className="audio-waveform">
+    <div className="audio-waveform" style={{ '--waveform-color': color }}>
       {Array.from({ length: barCount }).map((_, index) => {
         // Create a pattern of bar heights that looks like a waveform
         const position = index / barCount;
 
         // Calculate a height based on position and a sine wave pattern
-        let heightPercentage = 0.3 + 0.7 * getHeightForPosition(position);
+        // Use multiple sine waves with different frequencies for a more natural look
+        const wave1 = Math.sin(position * Math.PI * 5) * 0.5 + 0.5;
+        const wave2 = Math.sin(position * Math.PI * 7) * 0.3 + 0.5;
+        const wave3 = Math.sin(position * Math.PI * 13) * 0.2 + 0.5;
+
+        // Combine waves for a more natural look
+        let heightPercentage = 0.3 + 0.7 * ((wave1 + wave2 + wave3) / 3);
 
         // Make some random variations to look more natural
-        if (index % 3 === 0) heightPercentage *= 0.8;
-        if (index % 2 === 0) heightPercentage *= 1.2;
+        if (index % 5 === 0) heightPercentage *= 0.7;
+        if (index % 7 === 0) heightPercentage *= 1.3;
 
         // Clamp height to reasonable values
         heightPercentage = Math.max(0.2, Math.min(1.0, heightPercentage));
 
         // Calculate if this bar should be highlighted (for playback progress)
-        const isHighlighted = isPlaying && 
+        const isHighlighted = isPlaying &&
           (index / barCount) <= (currentPosition / Math.max(1, durationSeconds));
 
         return (
@@ -55,7 +61,8 @@ const AudioWaveform = ({
             className={`audio-waveform__bar ${isHighlighted ? 'audio-waveform__bar--highlighted' : ''}`}
             style={{
               height: `${28 * heightPercentage}px`,
-              backgroundColor: isHighlighted ? color : `${color}80`, // Add 50% transparency for non-highlighted bars
+              '--bar-color': color,
+              '--bar-highlight-color': color,
             }}
           />
         );

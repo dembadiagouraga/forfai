@@ -1,6 +1,7 @@
 import 'package:dartz/dartz.dart';
 
 import 'package:flutter/material.dart';
+import 'package:quick/app_constants.dart';
 import 'package:quick/domain/di/dependency_manager.dart';
 import 'package:quick/domain/interface/settings.dart';
 import 'package:quick/domain/model/models.dart';
@@ -51,7 +52,7 @@ class SettingsRepository implements SettingsInterface {
     try {
       final dioHttp = HttpService();
       final client = dioHttp.client(requireAuth: false);
-      final response = await client.get('http://192.168.0.107:8000/api/v1/rest/languages/active');
+      final response = await client.get('${AppConstants.baseUrl}/api/v1/rest/languages/active');
 
       if (LocalStorage.getLanguage() == null ||
           !(LanguagesResponse.fromJson(response.data)

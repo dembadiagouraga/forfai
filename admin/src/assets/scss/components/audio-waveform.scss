@@ -3,15 +3,24 @@
   align-items: center;
   height: 30px;
   width: 100%;
-  
+  --waveform-color: #2E8B57; /* Default color if not set by JS */
+
   &__bar {
     width: 2px;
     margin: 0 1px;
     border-radius: 1px;
-    transition: height 0.2s ease, background-color 0.2s ease;
-    
+    background-color: var(--bar-color, var(--waveform-color, #2E8B57));
+    opacity: 0.6;
+    transition: all 0.2s ease;
+
     &--highlighted {
-      transition: height 0.2s ease, background-color 0.2s ease;
+      background-color: var(--bar-highlight-color, var(--waveform-color, #2E8B57));
+      opacity: 1;
     }
+  }
+
+  /* Ensure the color is properly applied in both light and dark modes */
+  [data-theme='dark'] & {
+    --waveform-color: #2E8B57 !important;
   }
 }

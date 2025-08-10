@@ -1,0 +1,262 @@
+/* Professional Voice Message Loading States */
+
+.voice-download-indicator,
+.voice-loading-indicator,
+.voice-error-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Download State (for S3 downloads) */
+.voice-download-indicator {
+  .voice-download-spinner {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: download-spin 1s linear infinite;
+  }
+  
+  .voice-download-icon {
+    width: 12px;
+    height: 12px;
+    opacity: 0.8;
+    animation: download-bounce 1.5s ease-in-out infinite;
+  }
+}
+
+/* Generic Loading State */
+.voice-loading-indicator {
+  .voice-loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: loading-spin 0.8s linear infinite;
+  }
+}
+
+/* Error State */
+.voice-error-indicator {
+  .voice-error-icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.7;
+    color: #ff6b6b;
+    animation: error-pulse 2s ease-in-out infinite;
+  }
+}
+
+/* Professional Animations */
+@keyframes download-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes download-bounce {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
+@keyframes loading-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes error-pulse {
+  0%, 100% {
+    opacity: 0.7;
+    scale: 1;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.1;
+  }
+}
+
+/* Play Button States */
+.voice-message-bubble__play-button {
+  position: relative;
+  transition: all 0.3s ease;
+  
+  &--loading {
+    cursor: wait;
+    opacity: 0.8;
+    
+    &:hover {
+      transform: none;
+    }
+  }
+  
+  &--error {
+    cursor: pointer;
+    background-color: rgba(255, 107, 107, 0.1);
+    
+    &:hover {
+      background-color: rgba(255, 107, 107, 0.2);
+      transform: scale(1.05);
+    }
+  }
+}
+
+/* Admin Message Styles */
+.admin-message {
+  .voice-download-indicator,
+  .voice-loading-indicator {
+    color: rgba(255, 255, 255, 0.9);
+    
+    .voice-download-spinner,
+    .voice-loading-spinner {
+      border-color: rgba(255, 255, 255, 0.3);
+      border-top-color: currentColor;
+    }
+  }
+  
+  .voice-error-indicator {
+    .voice-error-icon {
+      color: #ffcccb;
+    }
+  }
+}
+
+/* User Message Styles */
+.user-message {
+  .voice-download-indicator,
+  .voice-loading-indicator {
+    color: #4a76a8;
+    
+    .voice-download-spinner,
+    .voice-loading-spinner {
+      border-color: rgba(74, 118, 168, 0.3);
+      border-top-color: currentColor;
+    }
+  }
+  
+  .voice-error-indicator {
+    .voice-error-icon {
+      color: #ff6b6b;
+    }
+  }
+}
+
+/* Enhanced Loading States for Different Scenarios */
+.voice-message-bubble__loading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  opacity: 0.8;
+  animation: text-fade 2s ease-in-out infinite;
+}
+
+.voice-message-bubble__error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #ff6b6b;
+  animation: error-text-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes text-fade {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes error-text-blink {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .voice-download-indicator,
+  .voice-loading-indicator,
+  .voice-error-indicator {
+    .voice-download-spinner,
+    .voice-loading-spinner {
+      width: 14px;
+      height: 14px;
+      border-width: 1.5px;
+    }
+    
+    .voice-download-icon,
+    .voice-error-icon {
+      width: 10px;
+      height: 10px;
+    }
+  }
+}
+
+/* Professional Touch: Smooth transitions and micro-interactions */
+.voice-message-bubble__play-button {
+  overflow: hidden;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+  
+  &:active::before {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* Cache Status Indicator (Optional) */
+.voice-cache-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: #4CAF50;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  
+  &--cached {
+    opacity: 1;
+  }
+}
+
+/* Performance Optimizations */
+.voice-message-bubble__play-button * {
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-download-indicator,
+  .voice-loading-indicator,
+  .voice-error-indicator {
+    animation: none;
+  }
+  
+  .voice-download-spinner,
+  .voice-loading-spinner {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.8;
+  }
+}

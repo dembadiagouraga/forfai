@@ -1,3 +1,5 @@
+import 'package:quick/app_constants.dart';
+
 class Galleries {
   Galleries({
     int? id,
@@ -70,7 +72,7 @@ class Galleries {
 
     // Fix host issues - replace 127.0.0.1 with the correct IP
     if (fixedPath.contains('127.0.0.1')) {
-      fixedPath = fixedPath.replaceAll('127.0.0.1', '192.168.0.107');
+      fixedPath = AppConstants.fixLocalIpUrl(fixedPath);
     }
 
     // Fix double storage path issue
@@ -94,7 +96,7 @@ class Galleries {
 
     // Fix host issues - replace 127.0.0.1 with the correct IP
     if (fixedPreview.contains('127.0.0.1')) {
-      fixedPreview = fixedPreview.replaceAll('127.0.0.1', '192.168.0.107');
+      fixedPreview = AppConstants.fixLocalIpUrl(fixedPreview);
     }
 
     // Fix double storage path issue

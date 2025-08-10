@@ -17,7 +17,7 @@ import 'package:quick/presentation/pages/chat/widget/image_chat_screen.dart';
 import 'package:quick/presentation/style/style.dart';
 import 'package:quick/presentation/style/theme/theme.dart';
 import 'package:swipe_to/swipe_to.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:just_audio/just_audio.dart' as just_audio;
 import 'focused_custom_menu.dart';
 
 class MessageItem extends StatefulWidget {
@@ -51,6 +51,22 @@ class _MessageItemState extends State<MessageItem> {
 
   // Track if product is tapped - moved to class level
   bool _isProductTapped = false;
+  
+  // 🎯 TRACK LOADED VOICE MESSAGES: Prevent duplicate loading
+  static final Map<String, bool> _loadedVoiceMessages = {};
+  
+  // 🎯 CHECK IF MESSAGE SHOULD LOAD
+  bool shouldLoadVoiceMessage(String messageId) {
+    // Always load if not previously loaded
+    if (!_loadedVoiceMessages.containsKey(messageId)) {
+      _loadedVoiceMessages[messageId] = true;
+      debugPrint('🆕 New voice message will load: $messageId');
+      return true;
+    }
+    
+    debugPrint('✅ Voice message already loaded, skipping: $messageId');
+    return false;
+  }
 
   @override
   void dispose() {
@@ -60,7 +76,7 @@ class _MessageItemState extends State<MessageItem> {
     }
     _positionNotifiers.clear();
 
-    // Cancel all stream subscriptions
+    // Cancel all stream subscriptions (including completion subscriptions)
     for (final subscription in _streamSubscriptions.values) {
       subscription?.cancel();
     }
@@ -478,10 +494,39 @@ class _MessageItemState extends State<MessageItem> {
     // Get the voice chat helper
     final voiceChatHelper = VoiceChatHelper();
 
-    // Get the duration in seconds
-    final durationSeconds = int.tryParse(widget.message.audioDuration ?? "0") ?? 0;
+    // Get the duration in seconds - handle both string and number formats
+    int durationSeconds = 0;
 
-    // Message ID already defined above
+    // Check if this is an admin message (senderId = 1)
+    bool isAdminMessage = widget.message.senderId == 1;
+
+    // Debug info
+    debugPrint('Voice message details: senderId=${widget.message.senderId}, isAdmin=$isAdminMessage, audioDuration=${widget.message.audioDuration}, duration=${widget.message.duration}');
+
+    // Extract duration with improved logic to handle all cases correctly
+    if (widget.message.duration != null) {
+      // Handle duration field (works for both admin and customer messages)
+      if (widget.message.duration is num) {
+        durationSeconds = (widget.message.duration as num).toInt();
+        debugPrint('Using duration as number: $durationSeconds');
+      } else {
+        durationSeconds = int.tryParse(widget.message.duration.toString()) ?? 0;
+        debugPrint('Parsed duration from string: $durationSeconds');
+      }
+    } else if (widget.message.audioDuration != null) {
+      // Fallback to audioDuration field
+      durationSeconds = int.tryParse(widget.message.audioDuration!) ?? 0;
+      debugPrint('Using audioDuration: $durationSeconds');
+    }
+
+    // Validate duration - use minimum of 1 second if invalid
+    if (durationSeconds <= 0) {
+      debugPrint('Voice message has invalid duration, using minimum of 1 second');
+      durationSeconds = 1;
+    }
+
+    // Final debug log
+    debugPrint('Final duration for voice message: $durationSeconds seconds');
 
     // Get or create a position notifier for this message
     final messageId = widget.message.doc ?? "";
@@ -490,15 +535,16 @@ class _MessageItemState extends State<MessageItem> {
     }
     final currentPosition = _positionNotifiers[messageId]!;
 
-    // We don't need to add a listener here as we're using ValueListenableBuilder
-
-    // Debug info
-    debugPrint('Rendering voice message: owner=$owner, duration=$durationSeconds, path=${widget.message.media}, senderId=${widget.message.senderId}, userId=${LocalStorage.getUser().id}');
+    // Create a loading state notifier
+    final isLoading = ValueNotifier<bool>(false);
 
     return Container(
-      width: MediaQuery.sizeOf(context).width * 2 / 3, // Match text message width
-      margin: EdgeInsets.only(bottom: 8.r, left: owner ? 0 : 8.r, right: owner ? 8.r : 0), // Align to correct side
-      padding: EdgeInsets.symmetric(vertical: 14.r, horizontal: 12.r), // Increased vertical padding for voice messages
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.75, // Slightly larger max width
+        minWidth: MediaQuery.sizeOf(context).width * 0.5,   // Minimum width for voice messages
+      ),
+      margin: EdgeInsets.only(bottom: 8.r, left: owner ? 0 : 8.r, right: owner ? 8.r : 0),
+      padding: EdgeInsets.symmetric(vertical: 12.r, horizontal: 10.r), // Slightly reduced padding
       decoration: BoxDecoration(
         color: owner ? widget.colors.primary : widget.colors.newBoxColor,
         borderRadius: BorderRadius.circular(AppConstants.radius.r),
@@ -509,131 +555,241 @@ class _MessageItemState extends State<MessageItem> {
         children: [
           if (widget.replyMessage?.doc != "") _reply(context, owner),
           if (widget.message.product != null) _productItem(context, owner),
-          Row(
-            children: [
-              // Play button with animation
-              // Use global state to determine if this message is playing
-              ValueListenableBuilder<String?>(
-                valueListenable: VoiceChatHelper.currentlyPlayingMessageId,
-                builder: (context, currentlyPlayingId, child) {
-                  final playing = currentlyPlayingId == messageId;
-                  return IconButton(
-                    icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                    onPressed: () {
-                      if (playing) {
-                        debugPrint("Pausing voice message: $messageId");
+          // Use IntrinsicHeight to prevent overflow and better layout
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Play button - Fixed width to prevent overflow
+                SizedBox(
+                  width: 40.w,
+                  child: ValueListenableBuilder<String?>(
+                    valueListenable: VoiceChatHelper.currentlyPlayingMessageId,
+                    builder: (context, currentlyPlayingId, _) {
+                      final playing = currentlyPlayingId == messageId;
 
-                        // First pause the audio
-                        voiceChatHelper.pauseVoiceMessage();
+                      return ValueListenableBuilder<bool>(
+                        valueListenable: isLoading,
+                        builder: (context, loading, _) {
+                          // Check if this is an uploading voice message (sent by current user)
+                          final isUploadingVoiceMessage = widget.message.isUploading == true || 
+                                                          (widget.message.isLocalVoiceMessage == true && owner);
+                          
+                          // Check if this is a voice message that needs downloading (received message without local path)
+                          final needsDownload = !owner && widget.message.type == "voice" && 
+                                               widget.message.media != null && 
+                                               widget.message.media!.startsWith('http');
 
-                        // Then update UI
-                        VoiceChatHelper.currentlyPlayingMessageId.value = null;
-                        setState(() {});
-                      } else {
-                        try {
-                          debugPrint("Playing voice message: $messageId");
+                          // Show uploading state for sent messages
+                          if (isUploadingVoiceMessage) {
+                            return SizedBox(
+                              width: 24.r,
+                              height: 24.r,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: owner ? widget.colors.white : widget.colors.primary,
+                                  ),
+                                  Icon(
+                                    Icons.upload,
+                                    size: 12.r,
+                                    color: owner ? widget.colors.white : widget.colors.primary,
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
 
-                          // First play the audio
-                          voiceChatHelper.playVoiceMessage(
-                            messageId: messageId,
-                            audioUrl: widget.message.media ?? "",
-                          );
+                          // Show download loading for received messages when downloading
+                          if (loading && needsDownload) {
+                            return SizedBox(
+                              width: 24.r,
+                              height: 24.r,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: owner ? widget.colors.white : widget.colors.textBlack,
+                                  ),
+                                  Icon(
+                                    Icons.download,
+                                    size: 12.r,
+                                    color: owner ? widget.colors.white : widget.colors.textBlack,
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
 
-                          // Then update UI
-                          VoiceChatHelper.currentlyPlayingMessageId.value = messageId;
-                          setState(() {});
+                          // Show regular loading (for local playback)
+                          if (loading) {
+                            return SizedBox(
+                              width: 24.r,
+                              height: 24.r,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: owner ? widget.colors.white : widget.colors.textBlack,
+                              ),
+                            );
+                          }
 
-                          // Cancel any existing subscription
-                          _streamSubscriptions[messageId]?.cancel();
-
-                          // Listen for playback position updates
-                          _streamSubscriptions[messageId] = voiceChatHelper.playbackPositionStream.listen((position) {
-                            if (mounted && _positionNotifiers.containsKey(messageId)) {
-                              currentPosition.value = position.inSeconds;
-
-                              // Also check player state to ensure UI is consistent
-                              final playerState = voiceChatHelper.getCurrentPlayerState();
-                              if (playerState == AudioPlayerState.playing &&
-                                  VoiceChatHelper.currentlyPlayingMessageId.value != messageId) {
-                                // If playing but UI shows play button, update UI
-                                VoiceChatHelper.currentlyPlayingMessageId.value = messageId;
-                                setState(() {});
-                              } else if (playerState != AudioPlayerState.playing &&
-                                       VoiceChatHelper.currentlyPlayingMessageId.value == messageId) {
-                                // If not playing but UI shows pause button, update UI
+                          return IconButton(
+                            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                            onPressed: () async {
+                              if (playing) {
+                                // Pause playback
+                                voiceChatHelper.pauseVoiceMessage();
                                 VoiceChatHelper.currentlyPlayingMessageId.value = null;
                                 setState(() {});
+                              } else {
+                                try {
+                                  // Show loading indicator
+                                  isLoading.value = true;
+
+                                  // Extract audio URL
+                                  String audioUrl = "";
+
+                                  // Check media field first (new standard)
+                                  if (widget.message.media != null && widget.message.media!.isNotEmpty) {
+                                    audioUrl = widget.message.media!;
+                                  }
+                                  // Then check message field (old format)
+                                  else if (widget.message.message != null &&
+                                          widget.message.message.toString().startsWith('http')) {
+                                    audioUrl = widget.message.message!;
+                                  }
+
+                                  if (audioUrl.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(AppHelpers.getTranslation(TrKeys.audioFileNotFound)),
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                    isLoading.value = false;
+                                    return;
+                                  }
+
+                                  // Play the voice message
+                                  voiceChatHelper.playVoiceMessage(
+                                    messageId: messageId,
+                                    audioUrl: audioUrl,
+                                  );
+
+                                  // Update UI
+                                  VoiceChatHelper.currentlyPlayingMessageId.value = messageId;
+                                  isLoading.value = false;
+                                  setState(() {});
+
+                                  // Cancel any existing subscriptions
+                                  _streamSubscriptions[messageId]?.cancel();
+
+                                  // Listen for playback position updates
+                                  _streamSubscriptions[messageId] = voiceChatHelper.playbackPositionStream.listen((position) {
+                                    if (mounted && _positionNotifiers.containsKey(messageId)) {
+                                      currentPosition.value = position.inSeconds;
+                                    }
+                                  });
+
+                                  // Listen for playback completion - WhatsApp style auto-reset
+                                  _streamSubscriptions['${messageId}_completion'] = voiceChatHelper.playbackStateStream.listen((state) {
+                                    if (state.processingState == just_audio.ProcessingState.completed) {
+                                      debugPrint("🎵 Playback completed for message: $messageId - Auto-resetting to play button");
+
+                                      // Reset UI state - WhatsApp style
+                                      VoiceChatHelper.currentlyPlayingMessageId.value = null;
+                                      currentPosition.value = 0; // Reset waveform to beginning
+                                      isLoading.value = false;
+
+                                      if (mounted) {
+                                        setState(() {});
+                                      }
+
+                                      // Cancel subscriptions for this message
+                                      _streamSubscriptions[messageId]?.cancel();
+                                      _streamSubscriptions['${messageId}_completion']?.cancel();
+                                    }
+                                  });
+                                } catch (e) {
+                                  isLoading.value = false;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(AppHelpers.getTranslation(TrKeys.errorPlayingVoiceMessage))),
+                                  );
+                                }
                               }
-                            }
-                          });
-
-                          // Playback completion is handled by VoiceChatHelper
-                        } catch (e) {
-                          debugPrint("Error playing: $e");
-                          // Show error message
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(AppHelpers.getTranslation(TrKeys.errorPlayingVoiceMessage))),
+                            },
+                            iconSize: 20.r,
+                            padding: EdgeInsets.all(2.r),
+                            constraints: BoxConstraints(
+                              minWidth: 24.r,
+                              minHeight: 24.r,
+                            ),
                           );
-                        }
-                      }
+                        },
+                      );
                     },
-                    color: owner ? widget.colors.white : widget.colors.textBlack,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    iconSize: 30.r, // Increased icon size
-                  );
-                },
-              ),
-
-              const SizedBox(width: 8),
-
-              // Waveform visualization
-              Expanded(
-                child: ValueListenableBuilder<int>(
-                  valueListenable: currentPosition,
-                  builder: (context, position, child) {
-                    return ValueListenableBuilder<String?>(
-                      valueListenable: VoiceChatHelper.currentlyPlayingMessageId,
-                      builder: (context, currentlyPlayingId, child) {
-                        // Check if this message is currently playing
-                        final playing = currentlyPlayingId == messageId;
-
-                        // For debugging
-                        if (messageId == widget.message.doc) {
-                          debugPrint("Waveform update - Message: $messageId, Playing: $playing, Position: $position");
-                        }
-
-                        return AudioWaveform(
-                          durationSeconds: durationSeconds,
-                          color: owner ? widget.colors.white : widget.colors.textBlack,
-                          isPlaying: playing,
-                          currentPosition: position,
-                        );
-                      },
-                    );
-                  },
+                  ),
                 ),
-              ),
 
-              const SizedBox(width: 8),
+                SizedBox(width: 4.w),
 
-              // Duration text
-              Text(
-                voiceChatHelper.formatDuration(durationSeconds),
-                style: CustomStyle.interNormal(
-                  color: owner ? widget.colors.white : widget.colors.textBlack,
-                  size: 12.sp,
+                // Waveform visualization - Use Flexible to prevent overflow
+                Flexible(
+                  flex: 3,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: currentPosition,
+                    builder: (context, position, _) {
+                      return ValueListenableBuilder<String?>(
+                        valueListenable: VoiceChatHelper.currentlyPlayingMessageId,
+                        builder: (context, currentlyPlayingId, _) {
+                          final playing = currentlyPlayingId == messageId;
+
+                          // For debugging
+                          if (playing && position > 0) {
+                            debugPrint('Waveform update - Message: $messageId, Playing: $playing, Position: $position, Duration: $durationSeconds');
+                          }
+
+                          // Make sure we have a valid duration to avoid division by zero
+                          // Use the same validated duration that was set earlier
+                          final effectiveDuration = durationSeconds > 0 ? durationSeconds : 1;
+
+                          return AudioWaveform(
+                            durationSeconds: effectiveDuration,
+                            color: owner ? widget.colors.white : widget.colors.textBlack,
+                            isPlaying: playing,
+                            currentPosition: position,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
 
-              const SizedBox(width: 4),
+                SizedBox(width: 4.w),
 
-              // Time with extra padding for voice messages
-              Container(
-                padding: EdgeInsets.only(top: 20.r), // Add extra padding at the top
-                child: _time(owner),
-              ),
-            ],
+                // Duration and time in a column to save horizontal space
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // Duration text
+                    Text(
+                      voiceChatHelper.formatDuration(durationSeconds),
+                      style: CustomStyle.interNormal(
+                        color: owner ? widget.colors.white : widget.colors.textBlack,
+                        size: 10.sp, // Smaller font to save space
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    // Time indicator
+                    _time(owner),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),

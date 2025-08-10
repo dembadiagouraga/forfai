@@ -203,7 +203,21 @@ Route::group(['prefix' => 'v1', 'middleware' => ['block.ip']], function () {
         Route::put('{type}/{id}/transactions',  [Payment\TransactionController::class, 'updateStatus']);
     });
 
+    /* Public Audio Proxy - No authentication required */
+    Route::get('proxy-audio',                       [Rest\ProxyController::class, 'proxyAudio']);
+    Route::get('proxy/voice-message/{chatId}/{filename}', [App\Http\Controllers\API\v1\ProxyController::class, 'getVoiceMessage']);
+
+    Route::get('v1/proxy-audio',                    [Rest\ProxyController::class, 'proxyAudio']);
+    Route::get('v1/dashboard/proxy-audio',          [Rest\ProxyController::class, 'proxyAudio']);
+
     Route::group(['prefix' => 'dashboard', 'middleware' => ['sanctum.check']], function () {
+
+        /* Voice Messages */
+        Route::post('chat/voice-message',               [Rest\ChatController::class, 'uploadVoiceMessage']);
+        Route::get('chat/test',                         function() {
+            \Log::info('🔥 TEST ROUTE HIT - BACKEND IS WORKING');
+            return response()->json(['status' => 'Backend working', 'time' => now()]);
+        });
 
         /* Galleries */
         Route::get('/galleries/paginate',               [GalleryController::class, 'paginate']);

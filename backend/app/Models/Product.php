@@ -106,6 +106,36 @@ class Product extends Model
 
     protected $guarded = ['id'];
 
+    // List of fillable fields for mass assignment
+    protected $fillable = [
+        'slug',
+        'category_id',
+        'price',
+        'price_from',
+        'price_to',
+        'brand_id',
+        'user_id',
+        'unit_id',
+        'visibility',
+        'region_id',
+        'country_id',
+        'city_id',
+        'area_id',
+        'keywords',
+        'img',
+        'work',
+        'state',
+        'contact_name',
+        'email',
+        'active',
+        'status',
+        'status_note',
+        'phone',
+        'type',
+        'voice_note_url', // Voice note URL field
+        'voice_note_duration', // Voice note duration in seconds
+    ];
+
     protected $casts = [
         'active'     => 'boolean',
         'interval'   => 'double',

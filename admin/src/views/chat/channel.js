@@ -3,7 +3,7 @@ import ChatDate from './chat-date';
 import AdminMessage from './admin-message';
 import UserMessage from './user-message';
 
-export default function Channel({ groupMessages, messageEndRef, handleActionMessage, handleDelete}) {
+export default function Channel({ groupMessages, messageEndRef, handleActionMessage, handleDelete, handleRetryUpload}) {
   // Log the group messages for debugging
   console.log('Channel component received groupMessages:', groupMessages);
 
@@ -26,7 +26,10 @@ export default function Channel({ groupMessages, messageEndRef, handleActionMess
               ) : (
                 <AdminMessage
                   key={item.id}
-                  data={item}
+                  data={{
+                    ...item,
+                    onRetryUpload: handleRetryUpload
+                  }}
                   onActionMessage={(actionType) => handleActionMessage(actionType, item)}
                   onDeleteMessage={() => handleDelete(item)}
                 />

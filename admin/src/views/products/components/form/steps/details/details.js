@@ -78,34 +78,83 @@ const Details = ({ handleSubmit }) => {
 
   const onFinish = (values) => {
     setLoadingBtn(true);
-    const body = {
-      // basic info
-      title: getTranslationFields(languages, values),
-      description: getTranslationFields(languages, values, 'description'),
-      // organization
-      category_id: values?.category?.value,
-      type: values.type,
-      state: values.state,
-      active: Number(values?.active),
-      // pricing
-      price: values?.price,
-      currency: values?.currency?.value,
-      // media
-      images: [...videoList?.images, ...imageList].map((item) => item?.name),
-      previews: videoList?.previews?.map((item) => item?.name),
-      // location
-      region_id: values?.region?.value,
-      country_id: values?.country?.value,
-      city_id: values?.city?.value,
-      area_id: values?.area?.value || undefined,
-      // user info
-      user_id: values?.user?.value,
-      contact_name: values?.contact_name,
-      email: values?.email,
-      phone: values?.phone,
-    };
 
-    handleSubmit(body).finally(() => setLoadingBtn(false));
+    // Check if we need to use FormData for file upload
+    if (values?.voice_note?.blob) {
+      // Create FormData for file upload
+      const formData = new FormData();
+
+      // Add basic info
+      formData.append('title', JSON.stringify(getTranslationFields(languages, values)));
+      formData.append('description', JSON.stringify(getTranslationFields(languages, values, 'description')));
+
+      // Add organization
+      formData.append('category_id', values?.category?.value);
+      formData.append('type', values.type);
+      formData.append('state', values.state);
+      formData.append('active', Number(values?.active));
+
+      // Add pricing
+      formData.append('price', values?.price);
+      formData.append('currency', values?.currency?.value);
+
+      // Add media
+      const images = [...videoList?.images, ...imageList].map((item) => item?.name);
+      formData.append('images', JSON.stringify(images));
+
+      const previews = videoList?.previews?.map((item) => item?.name) || [];
+      formData.append('previews', JSON.stringify(previews));
+
+      // Add location
+      formData.append('region_id', values?.region?.value);
+      formData.append('country_id', values?.country?.value);
+      formData.append('city_id', values?.city?.value);
+      if (values?.area?.value) {
+        formData.append('area_id', values?.area?.value);
+      }
+
+      // Add user info
+      formData.append('user_id', values?.user?.value);
+      formData.append('contact_name', values?.contact_name);
+      formData.append('email', values?.email);
+      formData.append('phone', values?.phone);
+
+      // Add voice note
+      formData.append('voice_note', values.voice_note.blob, 'product_voice_note.webm');
+      formData.append('voice_note_duration', values.voice_note.duration);
+
+      handleSubmit(formData).finally(() => setLoadingBtn(false));
+    } else {
+      // Use regular JSON object if no file upload is needed
+      const body = {
+        // basic info
+        title: getTranslationFields(languages, values),
+        description: getTranslationFields(languages, values, 'description'),
+        // organization
+        category_id: values?.category?.value,
+        type: values.type,
+        state: values.state,
+        active: Number(values?.active),
+        // pricing
+        price: values?.price,
+        currency: values?.currency?.value,
+        // media
+        images: [...videoList?.images, ...imageList].map((item) => item?.name),
+        previews: videoList?.previews?.map((item) => item?.name),
+        // location
+        region_id: values?.region?.value,
+        country_id: values?.country?.value,
+        city_id: values?.city?.value,
+        area_id: values?.area?.value || undefined,
+        // user info
+        user_id: values?.user?.value,
+        contact_name: values?.contact_name,
+        email: values?.email,
+        phone: values?.phone,
+      };
+
+      handleSubmit(body).finally(() => setLoadingBtn(false));
+    }
   };
 
   return (
@@ -128,7 +177,7 @@ const Details = ({ handleSubmit }) => {
     >
       <Row gutter={12}>
         <Col span={16}>
-          <BasicInfo loading={loading} />
+          <BasicInfo loading={loading} form={form} />
           <Pricing loading={loading} />
           <UserInfo loading={loading} form={form} />
           <Media

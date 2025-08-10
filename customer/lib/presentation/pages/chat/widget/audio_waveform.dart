@@ -49,16 +49,32 @@ class AudioWaveform extends StatelessWidget {
           heightPercentage = heightPercentage.clamp(0.2, 1.0);
 
           // Calculate if this bar should be highlighted (for playback progress)
-          final isHighlighted = isPlaying &&
-              (index / barCount) <= (currentPosition / durationSeconds.clamp(1, double.infinity));
+          // WhatsApp-style progressive highlighting
+          double progressRatio = 0;
 
-          return Container(
-            width: 2.r,
-            height: 28.r * heightPercentage, // Increased bar height
-            margin: EdgeInsets.symmetric(horizontal: 1.r),
+          if (isPlaying && durationSeconds > 0) {
+            // Use actual position and duration for accurate progress
+            final clampedPosition = currentPosition.clamp(0, durationSeconds);
+            progressRatio = clampedPosition / durationSeconds;
+
+            // Ensure progress doesn't exceed 100%
+            progressRatio = progressRatio.clamp(0.0, 1.0);
+          }
+
+          // WhatsApp-style highlighting: bars before current position are highlighted
+          final barPosition = index / barCount;
+          final isHighlighted = isPlaying && barPosition <= progressRatio;
+
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 100), // Smooth animation
+            width: 2.5.r, // Slightly wider bars like WhatsApp
+            height: 28.r * heightPercentage,
+            margin: EdgeInsets.symmetric(horizontal: 0.5.r), // Tighter spacing
             decoration: BoxDecoration(
-              color: isHighlighted ? color : color.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(1.r),
+              color: isHighlighted
+                ? color // Full color for played portion
+                : color.withOpacity(0.3), // More transparent for unplayed portion
+              borderRadius: BorderRadius.circular(1.5.r), // Rounded bars
             ),
           );
         }),

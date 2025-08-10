@@ -427,6 +427,8 @@ class TrKeys {
   static const String star = 'star';
   static const String yourRating = 'your.rating';
   static const String outOf = 'out.of';
+  static const String voiceNote = 'voice.note';
+  static const String tapToListen = 'tap.to.listen';
 
   // Refresher
   static String canLoadingText = "release.to.load.more";

@@ -1,3 +1,4 @@
+import 'package:quick/app_constants.dart';
 import 'package:quick/domain/model/model/attributes_data.dart';
 import 'package:quick/domain/model/model/category_model.dart';
 import 'package:quick/infrastructure/local_storage/local_storage.dart';
@@ -32,7 +33,7 @@ class ProductData {
 
     // Fix host issues - replace 127.0.0.1 with the correct IP
     if (fixedImg.contains('127.0.0.1')) {
-      fixedImg = fixedImg.replaceAll('127.0.0.1', '192.168.0.107');
+      fixedImg = AppConstants.fixLocalIpUrl(fixedImg);
     }
 
     // Fix double storage path issue
@@ -56,6 +57,8 @@ class ProductData {
   String? email;
   String? sellerName;
   String? condition;
+  String? voiceNoteUrl;
+  int? voiceNoteDuration;
   num? price;
   num? ratingAvg;
   num? totalPrice;
@@ -131,6 +134,8 @@ class ProductData {
     this.email,
     this.sellerName,
     this.condition,
+    this.voiceNoteUrl,
+    this.voiceNoteDuration,
   }) {
     this.img = img;
   }
@@ -224,6 +229,8 @@ class ProductData {
         email: json["email"],
         sellerName: json["contact_name"],
         condition: json["state"] == 1 ? "new" : "used",
+        voiceNoteUrl: json["voice_note_url"],
+        voiceNoteDuration: json["voice_note_duration"],
         viewsCount: json["views_count"],
         messageCount: json["message_click_count"],
         callsCount: json["phone_views_count"],
@@ -295,6 +302,8 @@ class ProductData {
         "type": type,
         "price": price,
         "attributes": attributes,
+        "voice_note_url": voiceNoteUrl,
+        "voice_note_duration": voiceNoteDuration,
         "viewsCount": viewsCount,
         "phone_views_count": callsCount,
         "likes_count": likeCount,

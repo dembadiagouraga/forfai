@@ -14,6 +14,7 @@ import 'widgets/image_screen.dart';
 import 'widgets/product_info.dart';
 import 'widgets/product_title.dart';
 import 'widgets/related_and_viewed_products.dart';
+import 'widgets/voice_note_player.dart';
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
@@ -109,6 +110,11 @@ class _ProductPageState extends State<ProductPage> {
                             colors: colors,
                             description:
                                 state.product?.translation?.description,
+                          ),
+                          VoiceNotePlayer(
+                            colors: colors,
+                            voiceNoteUrl: state.product?.voiceNoteUrl,
+                            voiceNoteDuration: state.product?.voiceNoteDuration,
                           ),
                           AttributeInfo(
                             colors: colors,

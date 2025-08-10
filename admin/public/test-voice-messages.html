@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Message CORS Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .log-container {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Voice Message CORS Testing Tool</h1>
+    
+    <div class="test-container">
+        <h2>🎯 Test Configuration</h2>
+        <label>S3 Voice Message URL:</label>
+        <input type="text" id="testUrl" placeholder="https://forfai-media.s3.eu-north-1.amazonaws.com/media/voice_messages/[CHAT_ID]/[FILENAME]" 
+               value="https://forfai-media.s3.eu-north-1.amazonaws.com/media/voice_messages/AXvrtwzZN7W9bM9PvTAA/1752864904_687a988002a1.wav">
+        
+        <label>Proxy URL (auto-generated):</label>
+        <input type="text" id="proxyUrl" readonly>
+        
+        <button onclick="generateProxyUrl()">Generate Proxy URL</button>
+        <button onclick="runAllTests()">🚀 Run All Tests</button>
+        <button onclick="clearLogs()">🗑️ Clear Logs</button>
+    </div>
+
+    <div class="test-container">
+        <h2>📊 Test Results</h2>
+        <div id="testResults"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>📝 Detailed Logs</h2>
+        <div id="logContainer" class="log-container"></div>
+    </div>
+
+    <script>
+        let testResults = [];
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logContainer = document.getElementById('logContainer');
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.className = type;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('testResults').innerHTML = '';
+            testResults = [];
+        }
+
+        function generateProxyUrl() {
+            const s3Url = document.getElementById('testUrl').value;
+            const regex = /media\/voice_messages\/([^\/]+)\/([^\/]+)/;
+            const match = s3Url.match(regex);
+            
+            if (match && match.length >= 3) {
+                const chatId = match[1];
+                const filename = match[2];
+                const proxyUrl = `${window.location.origin}/api/v1/proxy/voice-message/${chatId}/${filename}`;
+                document.getElementById('proxyUrl').value = proxyUrl;
+                log(`✅ Generated proxy URL: ${proxyUrl}`, 'success');
+            } else {
+                log('❌ Could not extract chat ID and filename from S3 URL', 'error');
+            }
+        }
+
+        async function testS3DirectAccess() {
+            const url = document.getElementById('testUrl').value;
+            log('🔍 Testing S3 Direct Access...', 'info');
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'HEAD',
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+
+                const result = {
+                    test: 'S3 Direct Access',
+                    status: response.status,
+                    success: response.ok,
+                    corsOrigin: response.headers.get('access-control-allow-origin'),
+                    contentType: response.headers.get('content-type'),
+                    contentLength: response.headers.get('content-length')
+                };
+
+                testResults.push(result);
+
+                if (response.ok) {
+                    log(`✅ S3 Direct Access: SUCCESS (${response.status})`, 'success');
+                    log(`   CORS Origin: ${result.corsOrigin}`, 'info');
+                    log(`   Content-Type: ${result.contentType}`, 'info');
+                } else {
+                    log(`❌ S3 Direct Access: FAILED (${response.status})`, 'error');
+                }
+
+            } catch (error) {
+                log(`❌ S3 Direct Access: ERROR - ${error.message}`, 'error');
+                testResults.push({
+                    test: 'S3 Direct Access',
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        async function testProxyEndpoint() {
+            const proxyUrl = document.getElementById('proxyUrl').value;
+            if (!proxyUrl) {
+                log('⚠️ Proxy URL not set. Generate it first.', 'warning');
+                return;
+            }
+
+            log('🔍 Testing Proxy Endpoint...', 'info');
+            
+            try {
+                const response = await fetch(proxyUrl, {
+                    method: 'HEAD',
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+
+                const result = {
+                    test: 'Proxy Endpoint',
+                    status: response.status,
+                    success: response.ok,
+                    corsOrigin: response.headers.get('access-control-allow-origin'),
+                    contentType: response.headers.get('content-type'),
+                    acceptRanges: response.headers.get('accept-ranges')
+                };
+
+                testResults.push(result);
+
+                if (response.ok) {
+                    log(`✅ Proxy Endpoint: SUCCESS (${response.status})`, 'success');
+                    log(`   CORS Origin: ${result.corsOrigin}`, 'info');
+                    log(`   Content-Type: ${result.contentType}`, 'info');
+                    log(`   Accept-Ranges: ${result.acceptRanges}`, 'info');
+                } else {
+                    log(`❌ Proxy Endpoint: FAILED (${response.status})`, 'error');
+                }
+
+            } catch (error) {
+                log(`❌ Proxy Endpoint: ERROR - ${error.message}`, 'error');
+                testResults.push({
+                    test: 'Proxy Endpoint',
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        async function testHowlerCompatibility() {
+            log('🔍 Testing Howler.js Compatibility...', 'info');
+            
+            if (typeof Howl === 'undefined') {
+                log('⚠️ Howler.js not loaded. This test requires the admin panel context.', 'warning');
+                return;
+            }
+
+            const url = document.getElementById('testUrl').value;
+            
+            try {
+                const sound = new Howl({
+                    src: [url],
+                    html5: true,
+                    format: ['wav', 'mp3', 'webm'],
+                    xhr: {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'audio/mpeg, audio/wav, audio/webm, */*'
+                        },
+                        withCredentials: false
+                    },
+                    onload: () => {
+                        log('✅ Howler.js: Audio loaded successfully', 'success');
+                        sound.unload();
+                    },
+                    onloaderror: (id, error) => {
+                        log(`❌ Howler.js: Load error - ${error}`, 'error');
+                    }
+                });
+
+                // Give it a moment to attempt loading
+                setTimeout(() => {
+                    if (sound.state() === 'loaded') {
+                        log('✅ Howler.js: Compatibility test passed', 'success');
+                    } else {
+                        log('⚠️ Howler.js: Still loading or failed', 'warning');
+                    }
+                }, 2000);
+
+            } catch (error) {
+                log(`❌ Howler.js: ERROR - ${error.message}`, 'error');
+            }
+        }
+
+        async function runAllTests() {
+            log('🚀 Starting comprehensive voice message tests...', 'info');
+            clearLogs();
+            
+            // Generate proxy URL if not set
+            if (!document.getElementById('proxyUrl').value) {
+                generateProxyUrl();
+            }
+
+            // Run all tests
+            await testS3DirectAccess();
+            await testProxyEndpoint();
+            await testHowlerCompatibility();
+
+            // Generate summary
+            generateTestSummary();
+        }
+
+        function generateTestSummary() {
+            const successfulTests = testResults.filter(r => r.success);
+            const failedTests = testResults.filter(r => !r.success);
+
+            const resultsContainer = document.getElementById('testResults');
+            resultsContainer.innerHTML = `
+                <div class="test-result info">
+                    <strong>📊 Test Summary:</strong><br>
+                    Total Tests: ${testResults.length}<br>
+                    Successful: ${successfulTests.length}<br>
+                    Failed: ${failedTests.length}
+                </div>
+            `;
+
+            if (successfulTests.length > 0) {
+                const successDiv = document.createElement('div');
+                successDiv.className = 'test-result success';
+                successDiv.innerHTML = '<strong>✅ Successful Tests:</strong><br>' + 
+                    successfulTests.map(t => `• ${t.test}: ${t.status || 'OK'}`).join('<br>');
+                resultsContainer.appendChild(successDiv);
+            }
+
+            if (failedTests.length > 0) {
+                const failDiv = document.createElement('div');
+                failDiv.className = 'test-result error';
+                failDiv.innerHTML = '<strong>❌ Failed Tests:</strong><br>' + 
+                    failedTests.map(t => `• ${t.test}: ${t.error || t.status}`).join('<br>');
+                resultsContainer.appendChild(failDiv);
+            }
+
+            // Recommendations
+            const recDiv = document.createElement('div');
+            recDiv.className = 'test-result info';
+            let recommendation = '';
+            
+            if (successfulTests.some(t => t.test.includes('S3 Direct'))) {
+                recommendation = '✅ S3 CORS is working - Direct access available';
+            } else if (successfulTests.some(t => t.test.includes('Proxy'))) {
+                recommendation = '🔄 Use proxy endpoint - S3 direct access has issues';
+            } else {
+                recommendation = '⚠️ All tests failed - Check network and CORS configuration';
+            }
+            
+            recDiv.innerHTML = `<strong>💡 Recommendation:</strong><br>${recommendation}`;
+            resultsContainer.appendChild(recDiv);
+
+            log('📊 Test summary generated', 'info');
+        }
+
+        // Auto-generate proxy URL on page load
+        window.onload = function() {
+            generateProxyUrl();
+            log('🎯 Voice Message CORS Testing Tool loaded', 'info');
+            log('📝 Instructions: Click "Run All Tests" to test voice message functionality', 'info');
+        };
+    </script>
+</body>
+</html>

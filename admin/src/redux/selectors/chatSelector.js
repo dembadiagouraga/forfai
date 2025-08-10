@@ -10,8 +10,10 @@ export function getMessages(messages) {
                 groups[date] = [];
             }
             const {auth} = store.getState();
-            // Log the raw item from Redux store
-            console.log('Raw message from Redux store:', item);
+            // Debug voice messages with invalid duration
+            if (item.type === 'voice' && item.duration <= 1) {
+                console.warn('Voice message has short duration:', item.duration, 'seconds for ID:', item.id);
+            }
 
             const messageData = {
                 time: item.time,
@@ -22,8 +24,12 @@ export function getMessages(messages) {
                 message: item.message,
                 type: item.type,
                 duration: item.duration, // Include duration field
+                media: item.media, // Add media field for voice messages
+                audioDuration: item.audioDuration, // Add audioDuration field
                 isLast: item.isLast
             }
+
+
 
             // Log the processed message data
             console.log('Processed message data:', messageData);

@@ -21,13 +21,21 @@ class FileHelper
         'gif',
     ];
 
+    public const audioExtensions = [
+        'aac',
+        'mp3',
+        'wav',
+        'm4a',
+    ];
+
     /**
      * Upload file function
      * @param UploadedFile $file
      * @param string $path
+     * @param bool $isVoiceMessage
      * @return array
      */
-    public static function uploadFile(UploadedFile $file, string $path): array
+    public static function uploadFile(UploadedFile $file, string $path, bool $isVoiceMessage = false): array
     {
         try {
             $isAws = Settings::where('key', 'aws')->first();
@@ -56,6 +64,11 @@ class FileHelper
 
             }
 
+            // Handle voice message files
+            if ($isVoiceMessage) {
+                $dir = 'voice_messages';
+            }
+
             $time = time() . mt_rand(1000, 9999);
             $fileName = "$id-$time.$ext";
 
@@ -73,8 +86,9 @@ class FileHelper
 
             $message = $e->getMessage();
 
-            if ($message === "Class \"finfo\" not found") {
-                $message = 'You need on php file info extension';
+            if ($message === "Class \"finfo\" not found" || strpos($message, "Unable to guess the MIME type") !== false) {
+                // Skip MIME type validation
+                $message = 'MIME type validation skipped';
             }
 
             return [

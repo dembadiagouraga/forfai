@@ -7,6 +7,7 @@ const initialState = {
   messagesLoading: false,
   chatInitialized: false,
   authUserId: null,
+  voiceUploads: {}, // Track voice message upload progress by temporary message ID
 };
 
 const chatSlice = createSlice({
@@ -54,6 +55,42 @@ const chatSlice = createSlice({
     setAuthUserId(state, action) {
       state.authUserId = action.payload;
     },
+    // Voice upload progress actions
+    setVoiceUploadProgress(state, action) {
+      const { tempMessageId, uploadState, progress } = action.payload;
+      state.voiceUploads[tempMessageId] = {
+        uploadState,
+        progress: progress || 0,
+        timestamp: Date.now(),
+      };
+    },
+    updateVoiceUploadProgress(state, action) {
+      const { tempMessageId, progress } = action.payload;
+      if (state.voiceUploads[tempMessageId]) {
+        state.voiceUploads[tempMessageId].progress = progress;
+        state.voiceUploads[tempMessageId].timestamp = Date.now();
+      }
+    },
+    setVoiceUploadState(state, action) {
+      const { tempMessageId, uploadState } = action.payload;
+      if (state.voiceUploads[tempMessageId]) {
+        state.voiceUploads[tempMessageId].uploadState = uploadState;
+        state.voiceUploads[tempMessageId].timestamp = Date.now();
+      }
+    },
+    removeVoiceUpload(state, action) {
+      const { tempMessageId } = action.payload;
+      delete state.voiceUploads[tempMessageId];
+    },
+    clearOldVoiceUploads(state) {
+      const now = Date.now();
+      const maxAge = 5 * 60 * 1000; // 5 minutes
+      Object.keys(state.voiceUploads).forEach(tempMessageId => {
+        if (now - state.voiceUploads[tempMessageId].timestamp > maxAge) {
+          delete state.voiceUploads[tempMessageId];
+        }
+      });
+    },
   },
 });
 
@@ -68,5 +105,10 @@ export const {
   setMessagesLoading,
   setChatInitialized,
   setAuthUserId,
+  setVoiceUploadProgress,
+  updateVoiceUploadProgress,
+  setVoiceUploadState,
+  removeVoiceUpload,
+  clearOldVoiceUploads,
 } = chatSlice.actions;
 export default chatSlice.reducer;

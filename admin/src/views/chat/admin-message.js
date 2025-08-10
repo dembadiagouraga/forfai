@@ -12,9 +12,6 @@ import ReplyMessage from './replyMessage';
 import VoiceMessageBubble from '../../components/VoiceMessageBubble';
 
 const AdminMessage = ({ data, onActionMessage, onDeleteMessage }) => {
-  // Log the full data object
-  console.log('AdminMessage component received data:', data);
-
   const { type, time, message, read, replyDocId } = data;
   const currentChatId = useSelector((state) => state.chat?.currentChat?.chatId);
 
@@ -68,13 +65,27 @@ const AdminMessage = ({ data, onActionMessage, onDeleteMessage }) => {
                 }}
               />
             ) : type === 'voice' ? (
-              // Log voice message data for debugging
-              console.log('Admin voice message data:', { ...data, audioUrl: message }) ||
-              <VoiceMessageBubble
-                audioUrl={message}
-                duration={data.duration || 0}
-                isAdmin={true}
-              />
+              (() => {
+                // Use audioDuration first (customer format), then duration (admin format), then fallback
+                const voiceDuration = data.audioDuration || data.duration || 6;
+
+                // Debug admin voice message issues
+                if (voiceDuration <= 1) {
+                  console.warn('Admin voice message has short duration:', voiceDuration, 'for message:', data.id);
+                }
+
+                return (
+                  <VoiceMessageBubble
+                    key={`voice-${data.id}-${message}`} // ✅ CRITICAL FIX: Stable key to prevent old messages from remounting
+                    audioUrl={message}
+                    duration={voiceDuration}
+                    isAdmin={true}
+                    messageId={data.id || ''}
+                    tempMessageId={data.tempMessageId || null}
+                    onRetryUpload={data.onRetryUpload || null}
+                  />
+                );
+              })()
             ) : (
               <div className='text'>{message}</div>
             )}

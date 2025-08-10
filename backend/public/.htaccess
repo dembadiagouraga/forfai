@@ -11,6 +11,17 @@
         Header always set Access-Control-Expose-Headers "Content-Length, X-JSON"
         Header always set Access-Control-Max-Age "86400"
 
+        # ✅ FIXED: Specific MIME types for audio files
+        <FilesMatch "\.(mp3)$">
+            Header set Content-Type "audio/mpeg"
+        </FilesMatch>
+        <FilesMatch "\.(wav)$">
+            Header set Content-Type "audio/wav"
+        </FilesMatch>
+        <FilesMatch "\.(m4a)$">
+            Header set Content-Type "audio/mp4"
+        </FilesMatch>
+
         # Handle preflight OPTIONS requests
         RewriteEngine On
         RewriteCond %{REQUEST_METHOD} OPTIONS

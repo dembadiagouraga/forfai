@@ -5,6 +5,7 @@ import 'package:remixicon/remixicon.dart';
 import 'package:quick/presentation/style/style.dart';
 import 'package:quick/presentation/style/theme/theme.dart';
 import 'package:quick/presentation/pages/chat/widget/audio_waveform.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 
 /// A widget for recording voice messages in the chat
@@ -32,21 +33,27 @@ class VoiceRecorderWidget extends StatefulWidget {
 
 class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget> with SingleTickerProviderStateMixin {
   final VoiceChatHelper _voiceChatHelper = VoiceChatHelper();
+  final AudioService _audioService = AudioService();
   bool _isRecording = false;
   bool _isPaused = false; // Track if recording is paused
   String? _currentRecordingPath;
   Timer? _pauseTimer; // Timer to track duration during pause
   int _recordingDuration = 0;
 
+  // ✅ FIXED: Add stream subscription for proper disposal
+  StreamSubscription<int>? _durationSubscription;
+
   @override
   void initState() {
     super.initState();
 
-    // Listen to recording duration updates
-    _voiceChatHelper.recordingDurationStream.listen((duration) {
-      setState(() {
-        _recordingDuration = duration;
-      });
+    // ✅ FIXED: Properly manage stream subscription
+    _durationSubscription = _voiceChatHelper.recordingDurationStream.listen((duration) {
+      if (mounted) {  // ✅ Check if widget is still mounted
+        setState(() {
+          _recordingDuration = duration;
+        });
+      }
     });
 
     // Start recording automatically if autoStart is true
@@ -60,10 +67,19 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget> with SingleTi
 
   @override
   void dispose() {
+    // ✅ FIXED: Properly dispose all resources
+
+    // Cancel stream subscription to prevent memory leaks
+    _durationSubscription?.cancel();
+
+    // Cancel any active timers
+    _pauseTimer?.cancel();
+
     // Cancel recording if still in progress when widget is disposed
     if (_isRecording) {
       _voiceChatHelper.cancelRecording();
     }
+
     super.dispose();
   }
 
@@ -75,6 +91,31 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget> with SingleTi
     }
 
     try {
+      // First request permission explicitly
+      final permissionResult = await _audioService.handlePermissionRequest();
+
+      if (!permissionResult['success']) {
+        debugPrint('Permission denied: ${permissionResult['message']}');
+
+        // Show user-friendly message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(permissionResult['message'] ?? 'Microphone permission required'),
+              action: permissionResult['error']?['canOpenSettings'] == true
+                  ? SnackBarAction(
+                      label: 'Settings',
+                      onPressed: () async {
+                        await openAppSettings();
+                      },
+                    )
+                  : null,
+            ),
+          );
+        }
+        return;
+      }
+
       final path = await _voiceChatHelper.startRecording();
       if (path != null) {
         setState(() {

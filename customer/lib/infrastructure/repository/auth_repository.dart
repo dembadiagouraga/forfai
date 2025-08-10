@@ -26,11 +26,27 @@ class AuthRepository implements AuthInterface {
 
     try {
       final client = dioHttp.client(requireAuth: false);
+      debugPrint('==> login request data: $data');
+
       final response = await client.post(
         '/api/v1/auth/login',
         queryParameters: data,
       );
-      return left(LoginResponse.fromJson(response.data));
+
+      debugPrint('==> login response status: ${response.statusCode}');
+      debugPrint('==> login response data: ${response.data}');
+
+      if (response.statusCode == 200) {
+        try {
+          final loginResponse = LoginResponse.fromJson(response.data);
+          return left(loginResponse);
+        } catch (parseError) {
+          debugPrint('==> login parse error: $parseError');
+          return right('Failed to process server response. Please try again.');
+        }
+      } else {
+        return right('Login failed with status ${response.statusCode}. Please try again.');
+      }
     } catch (e) {
       debugPrint('==> login failure: $e');
       return right(AppHelpers.errorHandler(e));

@@ -18,6 +18,7 @@ import ThemeConfigurator from './theme-configurator';
 import i18n from 'configs/i18next';
 import { RiArrowDownSFill } from 'react-icons/ri';
 import Scrollbars from 'react-custom-scrollbars';
+import { getImageUrl } from 'configs/app-global';
 import SubMenu from 'antd/lib/menu/SubMenu';
 import NavProfile from './nav-profile';
 import { batch } from 'react-redux';
@@ -166,7 +167,7 @@ const Sidebar = () => {
               <img
                 className='globalOutlined'
                 src={
-                  languages.find((item) => item.locale === i18n.language)?.img
+                  getImageUrl(languages.find((item) => item.locale === i18n.language)?.img)
                 }
                 alt={user.fullName}
               />

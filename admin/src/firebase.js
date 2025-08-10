@@ -13,6 +13,7 @@ import {
   deleteDoc,
   where,
   writeBatch,
+  deleteField,
 } from 'firebase/firestore';
 import { batch as reduxBatch } from 'react-redux';
 import {
@@ -28,6 +29,14 @@ import {
 import { store } from './redux/store';
 import { setChats, setMessages, setMessagesLoading } from './redux/slices/chat';
 import { toast } from 'react-toastify';
+import VoiceMessageService from './services/VoiceMessageService';
+import {
+  setVoiceUploadProgress,
+  updateVoiceUploadProgress,
+  setVoiceUploadState,
+  removeVoiceUpload
+} from './redux/slices/chat';
+import { UPLOAD_STATES } from './components/VoiceUploadProgress';
 import userService from './services/seller/user';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { setFirebaseToken } from './redux/slices/auth';
@@ -191,17 +200,32 @@ export function fetchMessages(chatId, userId) {
             id: doc.id,
             message: message.message,
             duration: message.duration,
+            durationType: typeof message.duration,
             hasDurationField: 'duration' in message
           });
 
-          // If it's a voice message but has no duration, set a default duration of 6 seconds
+          // Ensure duration is a valid number
+          let validDuration;
+
           if (message.duration === undefined || message.duration === null) {
             console.log('Voice message has no duration, setting default of 6 seconds');
-            message.duration = 6;
-          } else if (message.duration === 0) {
-            console.log('Voice message has zero duration, setting default of 6 seconds');
-            message.duration = 6;
+            validDuration = 6;
+          } else if (typeof message.duration === 'string') {
+            // If duration is a string, convert to number
+            validDuration = parseInt(message.duration) || 6;
+            console.log('Voice message has string duration, converted to number:', validDuration);
+          } else if (typeof message.duration === 'number') {
+            // Use the actual numeric duration
+            validDuration = message.duration;
+            console.log('Voice message has numeric duration:', validDuration);
+          } else {
+            // Fallback to default
+            validDuration = 6;
+            console.log('Voice message has invalid duration type, using default:', validDuration);
           }
+
+          // Update the message object with the valid duration
+          message.duration = validDuration;
         }
 
         // Convert Firestore timestamp to serializable format
@@ -221,7 +245,8 @@ export function fetchMessages(chatId, userId) {
           senderId: message.senderId,
           type: message.type,
           replyDocId: message.replyDocId,
-          duration: message.duration || 0, // Include duration field for voice messages
+          duration: typeof message.duration === 'number' ? message.duration : parseFloat(message.duration) || 0, // Include duration field for voice messages as a number
+          media: message.media, // Include media field for voice messages from customer app
           isLast: false,
         });
 
@@ -238,16 +263,21 @@ export function fetchMessages(chatId, userId) {
       }
       // Log the fetched messages before dispatching to Redux
       console.log('Messages to be dispatched to Redux:', fetchedMessages);
+      
+      // ✅ CRITICAL FIX: Add timestamp to force re-renders when message content changes
+      const messagesWithTimestamp = fetchedMessages.map(msg => ({
+        ...msg,
+        _lastUpdated: Date.now() // Force re-render trigger
+      }));
 
       reduxBatch(() => {
         store.dispatch(setMessagesLoading(false));
-        store.dispatch(setMessages(fetchedMessages));
+        store.dispatch(setMessages(messagesWithTimestamp));
       });
+      
+      console.log('✅ Messages dispatched to Redux with force re-render timestamp');
 
-      // Log the Redux store state after dispatching
-      setTimeout(() => {
-        console.log('Redux store state after dispatch:', store.getState().chat.messages);
-      }, 100);
+
       await batch.commit();
     });
   } catch (error) {
@@ -404,56 +434,46 @@ export async function sendVoiceMessage(currentUserId, chatId, audioBlob, duratio
     // Check if we're in development mode (localhost)
     const isDevelopment = window.location.hostname === 'localhost';
     let audioUrl = '';
+    let actualDuration = duration;
 
-    if (isDevelopment) {
-      // In development, skip the actual upload and use a dummy URL
-      console.log('Development mode detected, skipping actual upload to Firebase Storage');
+    if (isDevelopment && process.env.REACT_APP_SKIP_UPLOAD === 'true') {
+      // In development with skip upload flag, use a dummy URL
+      console.log('Development mode with skip upload flag, using dummy URL');
       audioUrl = 'https://example.com/dummy-voice-message.aac';
       console.log('Using dummy audio URL:', audioUrl);
     } else {
-      // In production, upload to Firebase Storage as normal
-      console.log('Starting voice message upload to Firebase Storage');
-      // Upload audio to Firebase Storage
-      const audioRef = ref(storage, `voice_messages/${chatId}/${Date.now()}.aac`);
-      console.log('Created storage reference:', audioRef.fullPath);
-
-      const uploadTask = uploadBytesResumable(audioRef, audioBlob);
-      console.log('Upload task started');
-
-      // Get download URL after upload
-      console.log('Waiting for upload to complete...');
-      const snapshot = await uploadTask;
-      console.log('Upload completed, bytes transferred:', snapshot.bytesTransferred);
-
-      audioUrl = await getDownloadURL(snapshot.ref);
-      console.log('Got download URL:', audioUrl);
+      // Upload to AWS S3 via backend API
+      console.log('Uploading voice message to AWS S3');
+      const result = await VoiceMessageService.uploadVoiceMessage(audioBlob, chatId, duration);
+      audioUrl = result.url;
+      actualDuration = result.duration;
+      console.log('Voice message uploaded successfully:', { audioUrl, actualDuration });
     }
 
-    // Format duration for display (mm:ss)
-    // Use the actual duration as provided
-    const actualDuration = duration || 0;
-    const minutes = Math.floor(actualDuration / 60);
-    const seconds = Math.floor(actualDuration % 60);
-    const formattedDuration = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    console.log('Formatted duration:', formattedDuration, 'from actual duration:', actualDuration);
-
-    // Update chat document with duration in the last message
-    console.log('Updating chat document with last message');
+    // Update chat document with last message
     const chatRef = doc(db, 'chat', chatId);
     await updateDoc(chatRef, {
-      lastMessage: `🎤 ${formattedDuration}`, // Microphone icon with duration
-      time: serverTimestamp(),
+      lastMessage: 'Voice message',
+      time: new Date().toISOString(),
     });
     console.log('Chat document updated successfully');
 
     // Add message document
+    // Ensure duration is a valid number and use the actual duration from recording
+    let validDuration = typeof actualDuration === 'number'
+      ? actualDuration
+      : parseFloat(actualDuration) || 0;
+
+    // Log the duration for debugging
+    console.log('Storing voice message with duration:', validDuration, 'seconds');
+
     const body = {
       read: false,
       time: new Date().toISOString(),
       senderId: currentUserId,
       message: audioUrl,
       type: "voice",
-      duration: actualDuration, // Use the actual duration
+      duration: validDuration, // Store as a number, not a string
     };
     console.log('Creating message document with body:', body);
 
@@ -465,5 +485,289 @@ export async function sendVoiceMessage(currentUserId, chatId, audioBlob, duratio
     console.error('Error in sendVoiceMessage:', error);
     toast.error(error.message || 'Error sending voice message');
     throw error; // Re-throw to allow caller to handle
+  }
+}
+
+/**
+ * Send a voice message with immediate display and upload progress tracking
+ * @param {string} currentUserId - ID of the current user
+ * @param {string} chatId - ID of the chat
+ * @param {Blob} audioBlob - Audio blob to upload
+ * @param {number} duration - Duration of the audio in seconds
+ * @returns {Promise<string>} - Temporary message ID for tracking
+ */
+export async function sendVoiceMessageWithProgress(currentUserId, chatId, audioBlob, duration) {
+  console.log('sendVoiceMessageWithProgress called with:', { currentUserId, chatId, audioBlob, duration });
+
+  if (!chatId || !currentUserId) {
+    console.error('Missing required parameters:', { currentUserId, chatId });
+    return null;
+  }
+
+  // Generate temporary message ID for tracking
+  const tempMessageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  console.log('Generated temporary message ID:', tempMessageId);
+
+  try {
+    // Immediately add a temporary message to Firebase for instant display
+    const tempBody = {
+      read: false,
+      time: new Date().toISOString(),
+      senderId: currentUserId,
+      message: 'Voice message', // Temporary placeholder
+      type: "voice",
+      duration: duration, // Use actual recording duration, don't force minimum
+      tempMessageId: tempMessageId, // Mark as temporary
+      isUploading: true // Flag to indicate upload in progress
+    };
+
+    console.log('Creating temporary message document with body:', tempBody);
+    const tempMessageRef = await addDoc(collection(db, 'chat', chatId, 'message'), tempBody);
+    const actualMessageId = tempMessageRef.id;
+    console.log('Temporary message created with ID:', actualMessageId);
+
+    // Update chat document with last message
+    const chatRef = doc(db, 'chat', chatId);
+    await updateDoc(chatRef, {
+      lastMessage: 'Voice message',
+      time: new Date().toISOString(),
+    });
+
+    // Set initial upload state in Redux
+    store.dispatch(setVoiceUploadProgress({
+      tempMessageId: tempMessageId,
+      uploadState: UPLOAD_STATES.UPLOADING,
+      progress: 0
+    }));
+
+    // Start upload process with progress tracking
+    try {
+      console.log('Starting voice message upload to AWS S3');
+
+      const result = await VoiceMessageService.uploadVoiceMessage(
+        audioBlob,
+        chatId,
+        duration,
+        (progress) => {
+          // Update progress in Redux
+          store.dispatch(updateVoiceUploadProgress({
+            tempMessageId: tempMessageId,
+            progress: progress
+          }));
+        }
+      );
+
+      const audioUrl = result.url;
+      const actualDuration = result.duration;
+
+      // 🔍 FIREBASE STORAGE ANALYSIS
+      console.group('🔥 FIREBASE STORAGE ANALYSIS');
+      console.log('✅ Upload Complete - S3 URL:', audioUrl);
+      console.log('⏱️ Backend Duration:', actualDuration, typeof actualDuration);
+      console.log('📦 Original Duration Sent:', duration, typeof duration);
+      console.groupEnd();
+
+      // ✅ CRITICAL FIX: Enhanced Firebase update with proper field management
+      const updateData = {
+        message: audioUrl, // Replace placeholder with real S3 URL
+        duration: actualDuration, // Use actual duration from backend
+        isUploading: false, // Remove upload flag
+        uploadFailed: deleteField(), // Remove any failed upload flags
+        tempMessageId: deleteField() // Remove temporary ID field
+      };
+
+      // 🔍 FIREBASE UPDATE ANALYSIS
+      console.group('🔥 FIREBASE UPDATE ANALYSIS');
+      console.log('📝 Updating Firebase with:', updateData);
+      console.log('🌐 S3 URL:', audioUrl);
+      console.log('⏱️ Final Duration to Store:', actualDuration, typeof actualDuration);
+      console.log('🆔 Message ID:', actualMessageId);
+      console.log('💬 Chat ID:', chatId);
+      console.groupEnd();
+
+      // ✅ ATOMIC UPDATE: Update Firebase document
+      await updateDoc(doc(db, 'chat', chatId, 'message', actualMessageId), updateData);
+      console.log('✅ Firebase message updated successfully with S3 URL');
+      
+      // ✅ FORCE IMMEDIATE UI UPDATE: Update chat's last message too
+      await updateDoc(doc(db, 'chat', chatId), {
+        lastMessage: 'Voice message',
+        time: new Date().toISOString(),
+      });
+      console.log('✅ Chat document updated with voice message');
+
+      // Set upload state to success and clean up after a delay
+      store.dispatch(setVoiceUploadState({
+        tempMessageId: tempMessageId,
+        uploadState: UPLOAD_STATES.SUCCESS
+      }));
+
+      // ✅ DEFINITIVE FIX: Force immediate UI update with guaranteed re-render
+      console.log('🔄 Implementing definitive UI refresh for new voice message...');
+      
+      // Strategy 1: Force immediate Redux update with re-render trigger
+      const currentState = store.getState();
+      const currentMessages = currentState.chat.messages;
+      
+      // Find and update the specific message
+      const messageIndex = currentMessages.findIndex(msg => 
+        msg.id === actualMessageId || msg.tempMessageId === tempMessageId
+      );
+      
+      if (messageIndex !== -1) {
+        const updatedMessages = [...currentMessages];
+        updatedMessages[messageIndex] = {
+          ...updatedMessages[messageIndex],
+          message: audioUrl, // Replace placeholder with S3 URL
+          duration: actualDuration,
+          isUploading: false,
+          uploadFailed: false,
+          tempMessageId: undefined, // Remove temp ID
+          _forceUpdate: Date.now() // Force re-render trigger
+        };
+        
+        console.log('📝 Force updating message in Redux:', {
+          messageId: actualMessageId,
+          tempMessageId: tempMessageId,
+          newUrl: audioUrl,
+          duration: actualDuration,
+          forceUpdate: updatedMessages[messageIndex]._forceUpdate
+        });
+        
+        // Multiple dispatch strategy to ensure update
+        store.dispatch(setMessagesLoading(true)); // Force loading state change
+        setTimeout(() => {
+          store.dispatch(setMessages(updatedMessages));
+          store.dispatch(setMessagesLoading(false));
+          console.log('✅ Redux state forcefully updated with S3 URL and re-render trigger');
+        }, 50);
+      } else {
+        console.error('❌ Message not found in Redux state for update:', {
+          actualMessageId,
+          tempMessageId,
+          totalMessages: currentMessages.length
+        });
+      }
+      
+      // Strategy 2: Verify update success
+      setTimeout(() => {
+        console.log('🔄 Verifying definitive UI update...');
+        const newState = store.getState();
+        const updatedMessage = newState.chat.messages.find(msg => msg.id === actualMessageId);
+        
+        if (updatedMessage && updatedMessage.message === audioUrl) {
+          console.log('✅ DEFINITIVE SUCCESS: Message updated in UI with S3 URL');
+        } else {
+          console.error('❌ DEFINITIVE FAILURE: Message still not updated in UI');
+        }
+      }, 1500);
+
+      // Clean up Redux state after a short delay
+      setTimeout(() => {
+        store.dispatch(removeVoiceUpload({ tempMessageId: tempMessageId }));
+      }, 2000);
+
+      return tempMessageId;
+
+    } catch (uploadError) {
+      console.error('Error uploading voice message:', uploadError);
+
+      // Set upload state to failed
+      store.dispatch(setVoiceUploadState({
+        tempMessageId: tempMessageId,
+        uploadState: UPLOAD_STATES.FAILED
+      }));
+
+      // Keep the temporary message but mark it as failed
+      await updateDoc(doc(db, 'chat', chatId, 'message', actualMessageId), {
+        isUploading: false,
+        uploadFailed: true
+      });
+
+      throw uploadError;
+    }
+
+  } catch (error) {
+    console.error('Error in sendVoiceMessageWithProgress:', error);
+
+    // Clean up Redux state on error
+    store.dispatch(removeVoiceUpload({ tempMessageId: tempMessageId }));
+
+    toast.error(error.message || 'Error sending voice message');
+    throw error;
+  }
+}
+
+/**
+ * Retry uploading a failed voice message
+ * @param {string} tempMessageId - Temporary message ID for tracking
+ * @param {string} chatId - ID of the chat
+ * @param {string} messageId - Actual Firebase message ID
+ * @param {Blob} audioBlob - Audio blob to upload (stored in memory or re-recorded)
+ * @param {number} duration - Duration of the audio in seconds
+ */
+export async function retryVoiceMessageUpload(tempMessageId, chatId, messageId, audioBlob, duration) {
+  console.log('retryVoiceMessageUpload called with:', { tempMessageId, chatId, messageId });
+
+  if (!chatId || !messageId || !tempMessageId) {
+    console.error('Missing required parameters for retry');
+    return;
+  }
+
+  try {
+    // Set upload state to retrying
+    store.dispatch(setVoiceUploadState({
+      tempMessageId: tempMessageId,
+      uploadState: UPLOAD_STATES.RETRYING
+    }));
+
+    // Start upload process with progress tracking
+    const result = await VoiceMessageService.uploadVoiceMessage(
+      audioBlob,
+      chatId,
+      duration,
+      (progress) => {
+        // Update progress in Redux
+        store.dispatch(updateVoiceUploadProgress({
+          tempMessageId: tempMessageId,
+          progress: progress
+        }));
+      }
+    );
+
+    const audioUrl = result.url;
+    const actualDuration = result.duration;
+    console.log('Voice message retry upload successful:', { audioUrl, actualDuration });
+
+    // Update the message with the actual audio URL
+    await updateDoc(doc(db, 'chat', chatId, 'message', messageId), {
+      message: audioUrl,
+      duration: actualDuration, // Use actual duration from backend
+      uploadFailed: deleteField() // Remove failed flag
+    });
+
+    console.log('Message updated with actual audio URL after retry');
+
+    // Set upload state to success and clean up after a delay
+    store.dispatch(setVoiceUploadState({
+      tempMessageId: tempMessageId,
+      uploadState: UPLOAD_STATES.SUCCESS
+    }));
+
+    // Clean up Redux state after a short delay
+    setTimeout(() => {
+      store.dispatch(removeVoiceUpload({ tempMessageId: tempMessageId }));
+    }, 2000);
+
+  } catch (error) {
+    console.error('Error retrying voice message upload:', error);
+
+    // Set upload state back to failed
+    store.dispatch(setVoiceUploadState({
+      tempMessageId: tempMessageId,
+      uploadState: UPLOAD_STATES.FAILED
+    }));
+
+    toast.error('Retry failed: ' + (error.message || 'Error uploading voice message'));
   }
 }

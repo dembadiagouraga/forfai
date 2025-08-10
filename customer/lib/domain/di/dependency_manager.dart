@@ -28,6 +28,7 @@ import 'package:quick/infrastructure/repository/products_repository.dart';
 import 'package:quick/infrastructure/repository/review_repository.dart';
 import 'package:quick/infrastructure/repository/settings_repository.dart';
 import 'package:quick/infrastructure/repository/user_repository.dart';
+import 'package:quick/infrastructure/services/voice_message_service.dart';
 
 final GetIt getIt = GetIt.instance;
 
@@ -47,6 +48,11 @@ Future<void> setUpDependencies() async {
   getIt.registerLazySingleton<AdsInterface>(() => AdsRepository());
   getIt.registerLazySingleton<PaymentsInterface>(() => PaymentsRepository());
   getIt.registerLazySingleton<ReviewInterface>(() => ReviewRepository());
+
+  // Register services
+  getIt.registerLazySingleton<VoiceMessageService>(
+    () => VoiceMessageService(getIt.get<HttpService>())
+  );
 }
 
 final settingsRepository = getIt.get<SettingsInterface>();
@@ -63,4 +69,5 @@ final userRepository = getIt.get<UserInterface>();
 final chatRepository = getIt.get<ChatInterface>();
 final addressRepository = getIt.get<AddressInterface>();
 final paymentsRepository = getIt.get<PaymentsInterface>();
+final voiceMessageService = getIt.get<VoiceMessageService>();
 final reviewRepository = getIt.get<ReviewInterface>();

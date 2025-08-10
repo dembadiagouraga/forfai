@@ -102,6 +102,14 @@ class Country extends Model
                         ->where(fn($q) => $q->where('title', 'LIKE', "%$search%")->orWhere('id', $search))
                         ->select('id', 'country_id', 'locale', 'title');
                 });
+            })
+            ->when(data_get($filter, 'has_price'), function ($query, $hasPrice) {
+                // Filter countries that have cities with pricing enabled
+                if ($hasPrice) {
+                    $query->whereHas('cities', function ($q) {
+                        $q->where('active', true);
+                    });
+                }
             });
     }
 }

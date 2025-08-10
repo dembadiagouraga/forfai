@@ -135,6 +135,13 @@
     .user-message {
       align-self: flex-start;
       background: var(--grey);
+
+      &.chat-voice {
+        /* Ensure voice message bubbles inherit the background color from parent */
+        .voice-message-bubble-wrapper {
+          background-color: transparent;
+        }
+      }
     }
   }
 }

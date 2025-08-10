@@ -23,7 +23,7 @@ class GridProductItem extends StatelessWidget {
     if (fixedUrl.startsWith('http')) {
       // Fix host issues - replace 127.0.0.1 with the correct IP
       if (fixedUrl.contains('127.0.0.1')) {
-        fixedUrl = fixedUrl.replaceAll('127.0.0.1', '192.168.0.107');
+        fixedUrl = AppConstants.fixLocalIpUrl(fixedUrl);
       }
 
       // Fix double storage path issue

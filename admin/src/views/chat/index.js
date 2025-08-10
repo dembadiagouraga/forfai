@@ -20,6 +20,8 @@ import {
   getChat,
   sendMessage,
   sendVoiceMessage,
+  sendVoiceMessageWithProgress,
+  retryVoiceMessageUpload,
 } from '../../firebase';
 
 import { FaMicrophone } from 'react-icons/fa';
@@ -59,13 +61,23 @@ export default function Chat() {
   const [url, setUrl] = useState('');
   const [modal, setModal] = useState(false);
   const [isVoiceRecordingModalVisible, setIsVoiceRecordingModalVisible] = useState(false);
+  const [isVoiceUploading, setIsVoiceUploading] = useState(false); // ✅ ADD UPLOAD STATE
   const currentUserId = useSelector((state) => state.auth.user.id);
   const { chats, currentChat, messagesLoading, chatInitialized, authUserId } =
     useSelector((state) => state.chat, shallowEqual);
+  // ✅ CRITICAL FIX: Remove shallowEqual to ensure re-renders when message content changes
   const groupMessages = useSelector(
-    (state) => getMessages(state.chat.messages),
-    shallowEqual,
+    (state) => {
+      const messages = getMessages(state.chat.messages);
+      console.log('🔄 Messages selector triggered, total groups:', messages.length);
+      return messages;
+    }
+    // Removed shallowEqual to ensure re-renders when individual message properties change
   );
+  // ✅ Access raw messages array for direct lookups (e.g., by tempMessageId)
+  const messages = useSelector((state) => state.chat.messages);
+  // ✅ Access voice upload states stored in Redux
+  const voiceUploads = useSelector((state) => state.chat.voiceUploads);
   const [newMessage, setNewMessage] = useState('');
   const [actionMessage, setActionMessage] = useState({
     actionType: null,
@@ -76,7 +88,13 @@ export default function Chat() {
 
   // Handle voice recording button click
   const handleVoiceRecordClick = () => {
-    console.log('handleVoiceRecordClick function called');
+    console.log('🎤 handleVoiceRecordClick function called');
+
+    // ✅ PREVENT MULTIPLE RECORDING SESSIONS
+    if (isVoiceRecordingModalVisible || isVoiceUploading) {
+      console.log('🚫 Recording already in progress or uploading, ignoring click');
+      return;
+    }
 
     // Check if the browser supports getUserMedia
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -88,7 +106,7 @@ export default function Chat() {
     // Request microphone access before showing the modal
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
-        console.log('Microphone access granted');
+        console.log('✅ Microphone access granted');
         // Stop the stream immediately, we just needed to check access
         stream.getTracks().forEach(track => track.stop());
 
@@ -99,37 +117,91 @@ export default function Chat() {
         });
       })
       .catch(err => {
-        console.error('Error accessing microphone:', err);
+        console.error('❌ Error accessing microphone:', err);
         alert('Could not access your microphone. Please check your microphone permissions and try again.');
       });
   };
 
-  // Handle voice recording completion
-  const handleVoiceRecordingComplete = (audioBlob, duration) => {
-    console.log('Voice recording complete:', { audioBlob, duration });
-    setIsVoiceRecordingModalVisible(false);
+  // Store audio blob for retry functionality
+  const [pendingVoiceUploads, setPendingVoiceUploads] = useState(new Map());
 
-    if (audioBlob && duration > 0) {
-      console.log('Sending voice message with:', {
-        currentUserId,
-        chatId: currentChat?.chatId,
-        audioBlobSize: audioBlob?.size,
-        duration
-      });
+  // Handle voice recording completion with progress tracking
+  const handleVoiceRecordingComplete = async (audioBlob, duration) => {
+    console.log('🎤 Voice recording complete:', { audioBlob, duration });
 
-      try {
-        sendVoiceMessage(
-          currentUserId,
-          currentChat?.chatId,
-          audioBlob,
-          duration
-        );
-        console.log('Voice message sent successfully');
-      } catch (error) {
-        console.error('Error sending voice message:', error);
-      }
-    } else {
+    // ❌ DON'T close modal immediately - wait for upload to complete
+    if (!audioBlob || duration <= 0) {
       console.warn('Cannot send voice message: audioBlob or duration is invalid');
+      setIsVoiceRecordingModalVisible(false);
+      return;
+    }
+
+    // ✅ SET UPLOADING STATE
+    setIsVoiceUploading(true);
+
+    console.log('🚀 Sending voice message with progress tracking:', {
+      currentUserId,
+      chatId: currentChat?.chatId,
+      audioBlobSize: audioBlob?.size,
+      duration
+    });
+
+    try {
+      // ✅ CRITICAL FIX: Wait for upload to complete before closing modal
+      const tempMessageId = await sendVoiceMessageWithProgress(
+        currentUserId,
+        currentChat?.chatId,
+        audioBlob,
+        duration
+      );
+
+      if (tempMessageId) {
+        // Store the audio blob for potential retry
+        setPendingVoiceUploads(prev => new Map(prev.set(tempMessageId, {
+          audioBlob,
+          duration,
+          chatId: currentChat?.chatId
+        })));
+        console.log('✅ Voice message upload completed with temp ID:', tempMessageId);
+      }
+
+      // ✅ Only close modal AFTER successful upload
+      setIsVoiceRecordingModalVisible(false);
+
+    } catch (error) {
+      console.error('❌ Error sending voice message with progress:', error);
+      // Close modal even on error to prevent UI lock
+      setIsVoiceRecordingModalVisible(false);
+    } finally {
+      // ✅ ALWAYS RESET UPLOADING STATE
+      setIsVoiceUploading(false);
+    }
+  };
+
+  // Handle retry upload
+  const handleRetryUpload = (tempMessageId) => {
+    console.log('Retrying upload for temp message ID:', tempMessageId);
+
+    // Read pending upload data from Redux voiceUploads map
+    const uploadData = voiceUploads && voiceUploads[tempMessageId];
+    if (!uploadData) {
+      console.error('No upload data found for temp message ID:', tempMessageId);
+      return;
+    }
+
+    const { audioBlob, duration, chatId } = uploadData;
+
+    // Find the actual message ID from Firebase messages
+    const message = messages.find(msg => msg.tempMessageId === tempMessageId);
+    if (!message) {
+      console.error('No message found for temp message ID:', tempMessageId);
+      return;
+    }
+
+    try {
+      retryVoiceMessageUpload(tempMessageId, chatId, message.id, audioBlob, duration);
+    } catch (error) {
+      console.error('Error retrying voice message upload:', error);
     }
   };
 
@@ -410,6 +482,7 @@ export default function Chat() {
               messageEndRef={messageEndRef}
               handleActionMessage={handleActionMessage}
               handleDelete={handleDelete}
+              handleRetryUpload={handleRetryUpload}
             />
             {actionMessage.message && (
               <MessageActionIndicator

@@ -1,32 +1,89 @@
-export const PROJECT_NAME = 'Forfai marketplace';
-export const BASE_URL = 'http://192.168.0.107:8000';
+export const PROJECT_NAME = 'Forfait marketplace';
+
+// ============================================================================
+// 🎯 CENTRALIZED CONFIGURATION - SINGLE SOURCE OF TRUTH
+// ============================================================================
+// ⚠️ DEVELOPMENT: Update DEVELOPMENT_IP when your device IP changes
+// ✅ PRODUCTION: Update PRODUCTION_DOMAIN for your live domain
+
+const DEVELOPMENT_IP = '192.168.0.110';  // 🔧 UPDATE THIS WHEN YOUR DEVICE IP CHANGES
+const DEVELOPMENT_PORT = '8000';
+const PRODUCTION_DOMAIN = 'https://yourdomain.com';  // 🌐 UPDATE THIS FOR PRODUCTION
+
+// Construct URLs
+const DEVELOPMENT_BASE_URL = `http://${DEVELOPMENT_IP}:${DEVELOPMENT_PORT}`;
+
+// Smart environment detection and URL selection
+const getBaseUrl = () => {
+  // Check if we're in development or production
+  // If NODE_ENV is undefined, default to development for local development
+  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === undefined;
+
+  if (isDevelopment) {
+    // Development: Use local IP configuration
+    return DEVELOPMENT_BASE_URL;
+  } else {
+    // Production: Use environment variable or configured domain
+    return process.env.REACT_APP_API_URL || PRODUCTION_DOMAIN;
+  }
+};
+
+export const BASE_URL = getBaseUrl();
 export const WEBSITE_URL = 'https://uzmart.org';
 export const api_url = BASE_URL + '/api/v1/';
-export const IMG_URL = BASE_URL + '/storage/'; // Make sure this matches backend's IMG_HOST
+export const IMG_BASE_URL = BASE_URL; // Use same as BASE_URL for consistency
+export const IMG_URL = BASE_URL; // Alias for IMG_BASE_URL for backward compatibility
 
-// Helper function to fix double storage path issue
+// Helper function to fix double storage path issue and handle all image URL formats
 export const getImageUrl = (path) => {
   if (!path) return '';
 
-  // If it's already a full URL, just return it
+  // If it's already a full URL (starts with http), fix old IP addresses
   if (path.startsWith('http')) {
+    let fixedUrl = path;
+
     // Fix double storage in existing URLs
-    if (path.includes('/storage/storage/')) {
-      return path.replace('/storage/storage/', '/storage/');
+    if (fixedUrl.includes('/storage/storage/')) {
+      fixedUrl = fixedUrl.replace('/storage/storage/', '/storage/');
     }
-    return path;
+
+    // Replace old IP addresses with current BASE_URL
+    const oldIPs = [
+      'http://192.168.0.110:8000',  // Older device IP
+      'http://127.0.0.1:8000',
+      'http://localhost:8000'
+    ];
+
+    for (const oldIP of oldIPs) {
+      if (fixedUrl.startsWith(oldIP)) {
+        // Extract the path part after the old base URL
+        const pathPart = fixedUrl.substring(oldIP.length);
+        return BASE_URL + pathPart;
+      }
+    }
+
+    return fixedUrl;
   }
 
-  // Remove leading slash if present
-  let pathToUse = path.startsWith('/') ? path.substring(1) : path;
+  // For relative paths, construct the full URL
+  let pathToUse = path;
 
-  // Fix double storage path issue
-  if (pathToUse.startsWith('storage/')) {
-    pathToUse = pathToUse.replace('storage/', '');
+  // Remove leading slash if present
+  if (pathToUse.startsWith('/')) {
+    pathToUse = pathToUse.substring(1);
+  }
+
+  // If path already starts with 'storage/', use it as is
+  // If path starts with 'images/', prepend 'storage/'
+  if (pathToUse.startsWith('images/')) {
+    pathToUse = 'storage/' + pathToUse;
+  } else if (!pathToUse.startsWith('storage/')) {
+    // If it doesn't start with storage/ or images/, assume it needs storage/ prefix
+    pathToUse = 'storage/' + pathToUse;
   }
 
   // Make sure we don't have double slashes
-  const baseUrl = IMG_URL.endsWith('/') ? IMG_URL.slice(0, -1) : IMG_URL;
+  const baseUrl = IMG_BASE_URL.endsWith('/') ? IMG_BASE_URL.slice(0, -1) : IMG_BASE_URL;
   return `${baseUrl}/${pathToUse}`;
 };
 export const MAP_API_KEY = 'AIzaSyDemoKeyForGoogleMaps123';
@@ -40,7 +97,7 @@ export const PROJECT_ID = 'forfai-74daa';
 export const STORAGE_BUCKET = 'forfai-74daa.firebasestorage.app';
 export const MESSAGING_SENDER_ID = '586412579852';
 export const APP_ID = '1:586412579852:web:6945f7ad5034af90a96229';
-export const MEASUREMENT_ID = '';
+export const MEASUREMENT_ID = 'G-9W8T75V93D';
 
 export const RECAPTCHASITEKEY = process.env.REACT_APP_RECAPTCHA_SITE_KEY;
 
@@ -64,9 +121,26 @@ export const SUPPORTED_FORMATS = [
   'image/svg',
 ];
 
+// ============================================================================
+// Configuration Export for setupProxy.js compatibility
+// ============================================================================
+// Export the IP configuration so setupProxy.js can access it
+// This creates a single source of truth for the IP address.
 
+// Create configuration object for export
+const ipConfiguration = {
+  DEVELOPMENT_IP,
+  DEVELOPMENT_PORT,
+  DEVELOPMENT_BASE_URL,
+  PRODUCTION_DOMAIN,
+  getBaseUrl,
+  BASE_URL
+};
 
+// Export for both CommonJS and ES6 modules
+if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
+  module.exports = ipConfiguration;
+}
 
-
-
-
+// Also export as named export for ES6 compatibility
+export { ipConfiguration };

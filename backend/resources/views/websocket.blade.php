@@ -13,7 +13,7 @@
 <ul id="messages-list"></ul>
 
 <script>
-    const socket = io('http://localhost:8000');
+    const socket = io('{{ config("app.url") }}');
 
     socket.on('websocket-channel:App\\Events\\WebSocketEvent', (event) => {
         const message = event.message;

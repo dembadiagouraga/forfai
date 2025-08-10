@@ -9,6 +9,7 @@ import 'package:quick/domain/model/models.dart';
 import 'package:quick/infrastructure/service/services.dart';
 import 'package:quick/infrastructure/firebase/firebase_service.dart';
 import 'package:quick/infrastructure/local_storage/local_storage.dart';
+import 'package:quick/infrastructure/services/voice_message_service.dart';
 
 class ChatRepository implements ChatInterface {
   @override
@@ -235,69 +236,73 @@ class ChatRepository implements ChatInterface {
     ProductData? product,
   }) async {
     try {
-      debugPrint('Starting voice message process for chat: $chatDocId');
+      debugPrint('Sending voice message. Chat ID: $chatDocId, Audio path: $audioPath');
 
-      // Verify the audio file exists
-      final audioFile = File(audioPath);
-      if (!await audioFile.exists()) {
-        debugPrint('Audio file does not exist: $audioPath');
-        return right("Audio file not found");
-      }
-
-      // Get the local file path - we'll use the local path directly
-      debugPrint('Processing audio file: $audioPath');
-      final audioUrl = audioPath; // Use local path directly
-
-      debugPrint('Using local audio file: $audioUrl');
-
-      // Generate a unique message ID
-      final messageId = DateTime.now().millisecondsSinceEpoch.toString();
-
-      // Create a message model for the voice message
-      final currentUserId = LocalStorage.getUserId() ?? 0;
-      final message = MessageModel(
-        message: "Voice message",
-        senderId: currentUserId, // Current user is the sender
-        doc: messageId,
-        type: "voice",
-        media: audioUrl,
-        audioDuration: audioDuration.toString(),
-        time: DateTime.now(),
-        read: false,
-        product: product == null
-            ? null
-            : Product.fromJson(product.toJsonForChat()),
+      // Upload the audio file to AWS S3 via backend API
+      final result = await voiceMessageService.uploadVoiceMessage(
+        audioPath: audioPath,
+        chatId: chatDocId,
+        duration: audioDuration,
       );
 
-      debugPrint('Created voice message with senderId: $currentUserId (current user ID)');
+      return result.fold(
+        (data) async {
+          // Get the S3 URL from the response
+          final audioUrl = data['url'];
+          final actualDuration = data['duration'];
 
-      // Add message to local chat immediately
-      debugPrint('Adding voice message to local chat');
+          // Generate a unique message ID
+          final messageId = DateTime.now().millisecondsSinceEpoch.toString();
 
-      // Try to send the message to the server in the background
-      try {
-        // Add to local messages list first
-        final chatDoc = await FirebaseService.store.collection("chat").doc(chatDocId).get();
-        if (chatDoc.exists) {
-          debugPrint('Chat document exists, adding message');
-          await FirebaseService.store.collection("chat").doc(chatDocId)
-              .collection("message").doc(messageId).set(message.toJson());
-          debugPrint('Voice message added to Firestore successfully');
-        } else {
-          debugPrint('Chat document does not exist, creating local-only message');
-        }
-      } catch (e) {
-        // Ignore Firestore errors - we'll still show the message locally
-        debugPrint('Firestore error ignored: $e');
-      }
+          // Create a message model for the voice message
+          final currentUserId = LocalStorage.getUserId() ?? 0;
+          final message = MessageModel(
+            message: "Voice message",
+            senderId: currentUserId,
+            doc: messageId,
+            type: "voice",
+            media: audioUrl, // Use S3 URL instead of local path
+            audioDuration: actualDuration.toString(),
+            time: DateTime.now(),
+            read: false,
+            product: product == null
+                ? null
+                : Product.fromJson(product.toJsonForChat()),
+          );
 
-      // Return success regardless of Firestore status
-      // This ensures the UI shows the message even if Firestore fails
-      debugPrint('Voice message processed successfully');
-      return left("Voice message sent successfully");
+          // Add the message to Firestore
+          try {
+            final chatDoc = await FirebaseService.store.collection("chat").doc(chatDocId).get();
+            if (chatDoc.exists) {
+              debugPrint('Chat document exists, adding message');
+              await FirebaseService.store.collection("chat").doc(chatDocId)
+                  .collection("message").doc(messageId).set(message.toJson());
+
+              // Update the chat document with the last message info
+              await FirebaseService.store.collection("chat").doc(chatDocId).update({
+                "time": Timestamp.now(),
+                "lastMessage": "Voice message",
+                "read": false,
+                "lastMessageId": messageId
+              });
+
+              debugPrint('Voice message added to Firestore successfully');
+            } else {
+              debugPrint('Chat document does not exist');
+              return right("Chat not found");
+            }
+          } catch (e) {
+            debugPrint('Firestore error: $e');
+            return right("Error saving message to chat");
+          }
+
+          return left(messageId);
+        },
+        (error) => right(error),
+      );
     } catch (e) {
-      debugPrint('==> send voice message failure: $e');
-      return right(AppHelpers.errorHandler(e));
+      debugPrint('Error sending voice message: $e');
+      return right(e.toString());
     }
   }
 }

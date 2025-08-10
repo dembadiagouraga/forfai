@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class MessageModel {
   final String? message;
   final DateTime? time;
@@ -8,7 +10,11 @@ class MessageModel {
   final String? replyDocId;
   final String? doc;
   final Product? product;
-  final String? audioDuration; // Duration of voice message in seconds
+  final String? audioDuration; // Duration of voice message in seconds (customer app format)
+  final dynamic duration; // Duration of voice message in seconds (admin app format)
+  final bool? isUploading; // Flag to indicate if voice message is uploading
+  final bool? isLocalVoiceMessage; // Flag to indicate if this is a local voice message before upload
+  final String? localAudioPath; // Local audio file path before upload
 
   MessageModel(
       {required this.message,
@@ -20,9 +26,50 @@ class MessageModel {
       this.type,
       this.replyDocId,
       this.audioDuration,
+      this.duration,
+      this.isUploading = false,
+      this.isLocalVoiceMessage = false,
+      this.localAudioPath,
       required this.doc});
 
   factory MessageModel.fromJson(Map? message, String doc) {
+    // Special handling for voice messages
+    String? mediaUrl = message?["media"];
+    String? messageType = message?["type"];
+    String? audioDurationStr = message?["audioDuration"];
+
+    // For voice messages, the URL might be in different fields depending on the sender
+    if (messageType == "voice") {
+      // For admin messages (senderId = 103 or any admin ID), the URL is in the message field
+      // Check if message field contains a URL (admin messages store URL in message field)
+      final msgStr = message?["message"]?.toString() ?? "";
+      if (msgStr.startsWith('http') && message?["message"] != null) {
+        // Use message field as media URL for admin messages
+        mediaUrl = message?["message"];
+
+        // For admin messages, if duration field exists but audioDuration doesn't, convert duration to audioDuration
+        if (audioDurationStr == null && message?["duration"] != null) {
+          // Get the duration value
+          dynamic durationValue = message?["duration"];
+
+          // Use the actual duration value from admin messages
+          // Don't enforce a minimum of 10 seconds as this causes display issues
+          audioDurationStr = durationValue.toString();
+          debugPrint('Admin voice message using ACTUAL duration: $audioDurationStr from senderId: ${message?["senderId"]}');
+        }
+      }
+      // If we still don't have a URL, try to extract it from the message field
+      else if (mediaUrl == null && message?["message"] != null) {
+        // Try to extract URL using regex
+        final urlRegex = RegExp(r'https?://[^\s]+');
+        final msgStr = message?["message"]?.toString() ?? "";
+        final match = urlRegex.firstMatch(msgStr);
+        if (match != null) {
+          mediaUrl = match.group(0);
+        }
+      }
+    }
+
     return MessageModel(
         message: message?["message"],
         time: DateTime.tryParse(message?["time"])?.toLocal(),
@@ -31,10 +78,11 @@ class MessageModel {
             ? null
             : Product.fromJson(message?["product"]),
         senderId: message?["senderId"],
-        media: message?["media"],
-        type: message?["type"],
+        media: mediaUrl,
+        type: messageType,
         replyDocId: message?["replyDocId"],
-        audioDuration: message?["audioDuration"],
+        audioDuration: audioDurationStr, // Use our processed audioDuration string
+        duration: message?["duration"], // Keep original duration field
         doc: doc);
   }
 
@@ -49,6 +97,8 @@ class MessageModel {
       if (type != null) "type": type,
       if (replyDocId != null) "replyDocId": replyDocId,
       if (audioDuration != null) "audioDuration": audioDuration,
+      if (duration != null) "duration": duration, // Include duration field
+      "doc": doc, // Include document ID for debugging
     };
   }
 }
