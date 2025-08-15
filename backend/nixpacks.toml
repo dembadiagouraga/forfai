@@ -1,0 +1,3 @@
+[variables]
+PHP_VERSION = "8.2"
+PHP_EXTENSIONS = "pdo_mysql zip exif pcntl bcmath intl gd"
