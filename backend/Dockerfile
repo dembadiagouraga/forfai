@@ -2,26 +2,45 @@ FROM php:8.2-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    git \
+    # Core system packages
     curl \
+    git \
+    unzip \
+    zip \
+    nginx \
+    supervisor \
+    # PHP extension dependencies
+    libzip-dev \
+    libgmp-dev \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
-    libfreetype6-dev \
-    libjpeg62-turbo-dev \
-    libgmp-dev \
-    libzip-dev \
-    zip \
-    unzip \
-    nginx \
-    supervisor
+    libcurl4-openssl-dev \
+    # PDF generation (wkhtmltopdf)
+    wkhtmltopdf \
+    xvfb \
+    # Image processing
+    libmagickwand-dev \
+    # Redis support
+    redis-server \
+    # Additional utilities
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
 
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions (parallel compilation for speed)
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
-RUN docker-php-ext-install -j$(nproc) pdo_mysql mbstring exif pcntl bcmath gd zip gmp
+RUN docker-php-ext-install -j$(nproc) pdo_mysql mbstring exif pcntl bcmath gd zip gmp curl dom fileinfo json simplexml
+
+# Install ImageMagick PHP extension
+RUN pecl install imagick && docker-php-ext-enable imagick
+
+# Install Redis PHP extension
+RUN pecl install redis && docker-php-ext-enable redis
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
