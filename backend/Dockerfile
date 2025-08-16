@@ -1,9 +1,7 @@
-# PHP 8.2 with FPM (FastCGI Process Manager)
 FROM php:8.2-fpm
 
-# System Dependencies (Nginx, Git, etc.)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    nginx \
     git \
     curl \
     libpng-dev \
@@ -11,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     zip \
     unzip \
+    nginx \
     supervisor
 
 # Clear cache
@@ -19,30 +18,32 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
-# Install Composer
+# Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Set working directory
 WORKDIR /var/www
 
-# Copy Nginx config
-COPY ./docker/nginx.conf /etc/nginx/sites-available/default
+# Copy existing application directory contents
+COPY . /var/www/
 
-# Copy application files
-COPY . /var/www
+# Copy existing application directory permissions
+COPY --chown=www-data:www-data . /var/www/
 
-# Install dependencies
+# Install Composer dependencies
 RUN composer install --optimize-autoloader --no-dev
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/storage
-RUN chmod -R 775 /var/www/storage
+# Set permissions for Laravel
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-# Copy supervisor config
-COPY ./docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Copy Nginx configuration
+COPY docker/nginx.conf /etc/nginx/sites-available/default
 
-# Expose port 80 for Nginx
+# Create supervisord configuration
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose port 80
 EXPOSE 80
 
-# Start services using supervisor
+# Start supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
