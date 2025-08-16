@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libgmp-dev \
     zip \
     unzip \
     nginx \
@@ -15,9 +18,9 @@ RUN apt-get update && apt-get install -y \
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
-RUN apt-get update && apt-get install -y libgmp-dev && docker-php-ext-install gmp
+# Install PHP extensions (parallel compilation for speed)
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg
+RUN docker-php-ext-install -j$(nproc) pdo_mysql mbstring exif pcntl bcmath gd zip gmp
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
