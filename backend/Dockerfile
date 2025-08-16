@@ -53,14 +53,21 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www
 
+# Allow composer to run as root in container
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# Install PHP dependencies first (before copying full app to avoid .env parsing)
+COPY composer.json composer.lock* ./
+RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
 # Copy existing application directory contents
 COPY . /var/www/
 
-# Copy existing application directory permissions
+# Copy existing application directory permissions  
 COPY --chown=www-data:www-data . /var/www/
 
-# Install Composer dependencies
-RUN composer install --optimize-autoloader --no-dev
+# Remove any .env files that might cause parsing issues during build
+RUN rm -f /var/www/.env /var/www/.env.local /var/www/.env.production || true
 
 # Set permissions for Laravel
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
