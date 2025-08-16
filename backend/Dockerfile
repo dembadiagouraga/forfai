@@ -58,7 +58,8 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 
 # Install PHP dependencies first (before copying full app to avoid .env parsing)
 COPY composer.json composer.lock* ./
-RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+# Important: disable scripts here because artisan is not present yet (belt-and-suspenders)
+RUN COMPOSER_NO_SCRIPTS=1 composer install --no-dev --prefer-dist --no-interaction --no-scripts --optimize-autoloader
 
 # Copy existing application directory contents
 COPY . /var/www/
@@ -68,6 +69,9 @@ COPY --chown=www-data:www-data . /var/www/
 
 # Remove any .env files that might cause parsing issues during build
 RUN rm -f /var/www/.env /var/www/.env.local /var/www/.env.production || true
+
+# Now that the full application (including artisan) is present, run composer scripts
+RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
 # Set permissions for Laravel
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
