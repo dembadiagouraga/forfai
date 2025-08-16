@@ -18,9 +18,9 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     libcurl4-openssl-dev \
-    # PDF generation (wkhtmltopdf)
-    wkhtmltopdf \
+    # PDF generation (wkhtmltopdf) - install from external source
     xvfb \
+    wget \
     # Image processing
     libmagickwand-dev \
     # Redis support
@@ -41,6 +41,11 @@ RUN pecl install imagick && docker-php-ext-enable imagick
 
 # Install Redis PHP extension
 RUN pecl install redis && docker-php-ext-enable redis
+
+# Install wkhtmltopdf manually (not available in Debian Trixie repos)
+RUN wget -q https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb \
+    && dpkg -i wkhtmltox_0.12.6.1-3.bookworm_amd64.deb || apt-get install -f -y \
+    && rm wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
