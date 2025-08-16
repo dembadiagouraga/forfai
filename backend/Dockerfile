@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install PHP extensions (parallel compilation for speed)
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
-RUN docker-php-ext-install -j$(nproc) pdo_mysql mbstring exif pcntl bcmath gd zip gmp curl dom fileinfo json simplexml
+RUN docker-php-ext-install -j$(nproc) pdo_mysql mbstring exif pcntl bcmath gd zip gmp
 
 # Install ImageMagick PHP extension
 RUN pecl install imagick && docker-php-ext-enable imagick
