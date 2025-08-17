@@ -19,7 +19,12 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => [
+        'http://localhost:3000', // Local Admin Panel
+        'http://localhost:3001', // Local Customer Web
+        'https://forfai.com',    // Production Admin Panel
+        'https://www.forfai.com', // Production Customer Web (if any)
+    ],
 
     'allowed_origins_patterns' => [],
 

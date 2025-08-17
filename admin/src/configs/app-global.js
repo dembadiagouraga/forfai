@@ -8,7 +8,7 @@ export const PROJECT_NAME = 'Forfait marketplace';
 
 const DEVELOPMENT_IP = '192.168.0.110';  // 🔧 UPDATE THIS WHEN YOUR DEVICE IP CHANGES
 const DEVELOPMENT_PORT = '8000';
-const PRODUCTION_DOMAIN = 'http://mkkc0co0s4sw8cwkcoc48wos.208.85.21.60.sslip.io';  // 🌐 PRODUCTION BACKEND URL
+const PRODUCTION_DOMAIN = 'https://mkkc0co0s4sw8cwkcoc48wos.208.85.21.60.sslip.io';  // 🌐 PRODUCTION BACKEND URL
 
 // Construct URLs
 const DEVELOPMENT_BASE_URL = `http://${DEVELOPMENT_IP}:${DEVELOPMENT_PORT}`;
