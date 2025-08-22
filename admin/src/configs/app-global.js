@@ -66,13 +66,8 @@ export const getImageUrl = (path) => {
     // Replace old IP addresses with current BASE_URL (development leftovers)
     const oldIPs = [
       'http://192.168.0.102:8000',
-      'https://192.168.0.102:8000',
-      'http://192.168.0.108:8000',
-      'https://192.168.0.108:8000',
       'http://127.0.0.1:8000',
-      'https://127.0.0.1:8000',
       'http://localhost:8000',
-      'https://localhost:8000',
     ];
     for (const oldIP of oldIPs) {
       if (fixedUrl.startsWith(oldIP)) {
