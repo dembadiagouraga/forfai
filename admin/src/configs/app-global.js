@@ -43,9 +43,20 @@ export const getImageUrl = (path) => {
 
   // If the input is already an absolute URL, return it (with minor fixes)
   // Covers: http, https, protocol-relative (//), data URIs
-  const isAbsolute = /^(https?:)?\/\//i.test(input) || input.startsWith('data:');
+  let candidate = input;
+  let isAbsolute = /^(https?:)?\/\//i.test(candidate) || candidate.startsWith('data:');
+
+  // Handle malformed absolute URLs like "/https://..." by stripping leading slashes and re-checking
+  if (!isAbsolute && candidate.startsWith('/')) {
+    const stripped = candidate.replace(/^\/+/, '');
+    if (/^(https?:)?\/\//i.test(stripped)) {
+      candidate = stripped;
+      isAbsolute = true;
+    }
+  }
+
   if (isAbsolute) {
-    let fixedUrl = input;
+    let fixedUrl = candidate;
 
     // Fix double storage in existing URLs
     if (fixedUrl.includes('/storage/storage/')) {
@@ -75,6 +86,11 @@ export const getImageUrl = (path) => {
   // Remove leading slash if present
   if (pathToUse.startsWith('/')) {
     pathToUse = pathToUse.substring(1);
+  }
+
+  // After removing leading slash, if it became an absolute URL (edge case), return it directly
+  if (/^(https?:)?\/\//i.test(pathToUse)) {
+    return pathToUse;
   }
 
   // If path starts with 'images/', prepend 'storage/'
