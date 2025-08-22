@@ -6,7 +6,7 @@ export const PROJECT_NAME = 'Forfait marketplace';
 // ⚠️ DEVELOPMENT: Update DEVELOPMENT_IP when your device IP changes
 // ✅ PRODUCTION: Update PRODUCTION_DOMAIN for your live domain
 
-const DEVELOPMENT_IP = '192.168.0.110';  // 🔧 UPDATE THIS WHEN YOUR DEVICE IP CHANGES
+const DEVELOPMENT_IP = '192.168.0.102';  // 🔧 UPDATE THIS WHEN YOUR DEVICE IP CHANGES
 const DEVELOPMENT_PORT = '8000';
 const PRODUCTION_DOMAIN = 'https://mkkc0co0s4sw8cwkcoc48wos.208.85.21.60.sslip.io';  // 🌐 PRODUCTION BACKEND URL
 
@@ -38,51 +38,54 @@ export const IMG_URL = BASE_URL; // Alias for IMG_BASE_URL for backward compatib
 export const getImageUrl = (path) => {
   if (!path) return '';
 
-  // If it's already a full URL (starts with http), fix old IP addresses
-  if (path.startsWith('http')) {
-    let fixedUrl = path;
+  // Normalize input (trim spaces/newlines)
+  let input = String(path).trim();
+
+  // If the input is already an absolute URL, return it (with minor fixes)
+  // Covers: http, https, protocol-relative (//), data URIs
+  const isAbsolute = /^(https?:)?\/\//i.test(input) || input.startsWith('data:');
+  if (isAbsolute) {
+    let fixedUrl = input;
 
     // Fix double storage in existing URLs
     if (fixedUrl.includes('/storage/storage/')) {
       fixedUrl = fixedUrl.replace('/storage/storage/', '/storage/');
     }
 
-    // Replace old IP addresses with current BASE_URL
+    // Replace old IP addresses with current BASE_URL (development leftovers)
     const oldIPs = [
-      'http://192.168.0.110:8000',  // Older device IP
+      'http://192.168.0.102:8000',
       'http://127.0.0.1:8000',
-      'http://localhost:8000'
+      'http://localhost:8000',
     ];
-
     for (const oldIP of oldIPs) {
       if (fixedUrl.startsWith(oldIP)) {
-        // Extract the path part after the old base URL
         const pathPart = fixedUrl.substring(oldIP.length);
-        return BASE_URL + pathPart;
+        const base = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
+        return `${base}${pathPart}`;
       }
     }
 
     return fixedUrl;
   }
 
-  // For relative paths, construct the full URL
-  let pathToUse = path;
+  // Handle relative paths → construct full URL
+  let pathToUse = input;
 
   // Remove leading slash if present
   if (pathToUse.startsWith('/')) {
     pathToUse = pathToUse.substring(1);
   }
 
-  // If path already starts with 'storage/', use it as is
   // If path starts with 'images/', prepend 'storage/'
+  // If neither starts with 'storage/' nor 'images/', also prepend 'storage/'
   if (pathToUse.startsWith('images/')) {
-    pathToUse = 'storage/' + pathToUse;
+    pathToUse = `storage/${pathToUse}`;
   } else if (!pathToUse.startsWith('storage/')) {
-    // If it doesn't start with storage/ or images/, assume it needs storage/ prefix
-    pathToUse = 'storage/' + pathToUse;
+    pathToUse = `storage/${pathToUse}`;
   }
 
-  // Make sure we don't have double slashes
+  // Ensure base URL doesn't end with slash
   const baseUrl = IMG_BASE_URL.endsWith('/') ? IMG_BASE_URL.slice(0, -1) : IMG_BASE_URL;
   return `${baseUrl}/${pathToUse}`;
 };
